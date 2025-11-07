@@ -35,8 +35,8 @@ fn decode_base44_optimal(s: &str) -> Result<[u8; 13], Uuid45Error> {
         )));
     }
 
-    let vec = qr_base44::decode_bits(103, s)
-        .map_err(|e| Uuid45Error::InvalidBase44(e.to_string()))?;
+    let vec =
+        qr_base44::decode_bits(103, s).map_err(|e| Uuid45Error::InvalidBase44(e.to_string()))?;
 
     if vec.len() != 13 {
         return Err(Uuid45Error::InvalidLength {
@@ -393,7 +393,12 @@ mod tests {
         for _ in 0..20 {
             let u = generate_v4();
             let encoded = encode_uuid(u).unwrap();
-            assert_eq!(encoded.len(), 19, "Expected 19 chars, got {}", encoded.len());
+            assert_eq!(
+                encoded.len(),
+                19,
+                "Expected 19 chars, got {}",
+                encoded.len()
+            );
             // Verify decode works
             let decoded = decode_to_uuid(&encoded).unwrap();
             assert_eq!(u, decoded);
