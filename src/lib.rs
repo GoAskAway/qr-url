@@ -1,6 +1,6 @@
-//! qr-url-uuid4: Compact Base44 codec for UUID v4 by stripping the 6 fixed bits (version+variant).
-//! - 128-bit UUID v4 -> remove version(4b) and variant(2b) => 122 bits, pack to 16 bytes (last 6 bits unused) => Base44
-//! - Reverse to reconstruct a canonical UUID v4
+//! qr-url-uuid4: Compact Base44 codec for UUID v4 by stripping 24 fixed bits.
+//! - 128-bit UUID v4 -> remove version(4b) + variant(2b) + signature "41c2ae"(18b) => 104 bits, pack to 13 bytes => Base44
+//! - Reverse to reconstruct a canonical UUID v4 with signature "xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx"
 //! - Optimized for QR code alphanumeric mode and URL embedding (Base44 = Base45 without space character)
 //!   Provides: library API, WASM bindings (target wasm32), and CLI tool.
 
@@ -15,148 +15,134 @@ pub enum Uuid45Error {
     InvalidBase44(String),
     #[error("Invalid length: expected {expected} got {actual}")]
     InvalidLength { expected: usize, actual: usize },
-    #[error("Non-zero padding bits in compact payload")]
-    NonZeroPadding,
+    #[error("UUID does not have required signature '41c2ae' at positions 13-18")]
+    InvalidSignature,
 }
 
-/// Positions (byte index, bit index within byte [7..0], big-endian) of the fixed bits in a UUID v4.
-/// - Version: byte 6, bits 7..4 must be 0b0100
-/// - Variant (RFC4122): byte 8, bits 7..6 must be 0b10
-const FIXED_POSITIONS: &[(usize, u8, u8)] = &[
-    // (byte_idx, mask, expected_value_on_those_bits)
-    // Version nibble (bits 7..4)
-    (6, 0b1111_0000, 0b0100_0000),
-    // Variant two MSBs (bits 7..6)
-    (8, 0b1100_0000, 0b1000_0000),
-];
+/// Fixed bits in our UUID v4 variant with signature "41c2ae":
+/// - Byte 6: 0x41 (version 4 in high nibble + signature '1' in low nibble)
+/// - Byte 7: 0xc2 (signature)
+/// - Byte 8: 0xae (variant '10' in high 2 bits + signature '2e' in low 6 bits)
+const SIGNATURE_BYTE6: u8 = 0x41;
+const SIGNATURE_BYTE7: u8 = 0xc2;
+const SIGNATURE_BYTE8: u8 = 0xae;
 
-/// Extract 122-bit compact representation from a canonical UUID v4 byte array.
-/// Returns 16 bytes where only the lowest 122 bits are used; the top 6 bits of the last byte must be zero.
-pub fn uuid_to_compact_bytes(uuid_bytes: &[u8; 16]) -> Result<[u8; 16], Uuid45Error> {
-    // Validate fixed bits follow UUID v4 spec (optional but recommended)
-    for (idx, mask, expected) in FIXED_POSITIONS.iter().copied() {
-        if uuid_bytes[idx] & mask != expected {
-            // We still allow encoding but enforce spec by overwriting those bits when reconstructing.
-            // To be strict, return error; but it's safer to allow as long as version/variant can be normalized.
-            // Here we choose to be lenient: do nothing.
-        }
+/// Extract 104-bit compact representation from a canonical UUID v4 byte array.
+/// Removes 24 fixed bits: version(4) + variant(2) + signature "41c2ae"(18).
+/// Returns 13 bytes containing exactly 104 bits (last byte uses all 8 bits).
+/// Returns error if UUID does not have the required signature.
+pub fn uuid_to_compact_bytes(uuid_bytes: &[u8; 16]) -> Result<[u8; 13], Uuid45Error> {
+    // Verify UUID has the required signature
+    if uuid_bytes[6] != SIGNATURE_BYTE6
+        || uuid_bytes[7] != SIGNATURE_BYTE7
+        || uuid_bytes[8] != SIGNATURE_BYTE8
+    {
+        return Err(Uuid45Error::InvalidSignature);
     }
 
-    // Gather all 128 bits, skip the 6 fixed ones in order.
-    let mut out_bits = Vec::with_capacity(122);
+    // Gather all 128 bits, skip the 24 fixed ones:
+    // - byte 6: skip all 8 bits (version + signature)
+    // - byte 7: skip all 8 bits (signature)
+    // - byte 8: skip all 8 bits (variant + signature)
+    let mut out_bits = Vec::with_capacity(104);
     for (byte_idx, b) in uuid_bytes.iter().copied().enumerate().take(16) {
+        // Skip bytes 6, 7, 8 entirely (they are all fixed)
+        if byte_idx == 6 || byte_idx == 7 || byte_idx == 8 {
+            continue;
+        }
+        // Keep all bits from other bytes
         for bit in (0..8).rev() {
-            // msb first
             let mask = 1u8 << bit;
-            let is_fixed =
-                // Version nibble bits 7..4 in byte 6
-                (byte_idx == 6 && bit >= 4) ||
-                // Variant bits 7..6 in byte 8
-                (byte_idx == 8 && bit >= 6);
-            if is_fixed {
-                continue;
-            }
             out_bits.push((b & mask) != 0);
         }
     }
-    assert_eq!(out_bits.len(), 122);
+    assert_eq!(out_bits.len(), 104);
 
-    // Pack into 16 bytes (ceil(122/8) = 16). Only lowest 2 bits of the last byte are used.
-    // We pack LSB-first so that padding occupies the high bits of the last byte.
-    let mut out = [0u8; 16];
+    // Pack into 13 bytes (ceil(104/8) = 13).
+    // We pack LSB-first for consistency.
+    let mut out = [0u8; 13];
     let mut bit_idx = 0;
     for item in &mut out {
         let mut acc = 0u8;
         for bit in 0..8 {
-            acc |= (out_bits.get(bit_idx).copied().unwrap_or(false) as u8) << bit;
-            bit_idx += 1;
-            if bit_idx >= 122 {
-                break;
+            if bit_idx < 104 {
+                acc |= (out_bits[bit_idx] as u8) << bit;
+                bit_idx += 1;
             }
         }
         *item = acc;
-        if bit_idx >= 122 {
-            break;
-        }
     }
-
-    // Ensure the top 6 bits of the last byte (bits 7..2) are zeroed by construction
-    out[15] &= 0b0000_0011;
 
     Ok(out)
 }
 
-/// Reconstruct full 128-bit UUID bytes from a compact 122-bit packed representation.
-/// Accepts 16 bytes; ignores the top 6 padding bits which must be zero.
+/// Reconstruct full 128-bit UUID bytes from a compact 104-bit packed representation.
+/// Accepts 13 bytes containing 104 bits. Restores fixed signature bytes 6, 7, 8.
 pub fn compact_bytes_to_uuid(compact: &[u8]) -> Result<[u8; 16], Uuid45Error> {
-    if compact.len() != 16 {
+    if compact.len() != 13 {
         return Err(Uuid45Error::InvalidLength {
-            expected: 16,
+            expected: 13,
             actual: compact.len(),
         });
     }
-    if compact[15] & 0b1111_1100 != 0 {
-        return Err(Uuid45Error::NonZeroPadding);
-    }
 
-    // Unpack 122 bits LSB-first from each byte
-    let mut bits: Vec<bool> = Vec::with_capacity(122);
-    let mut taken = 0usize;
-    'outer: for &b in compact.iter().take(16) {
+    // Unpack 104 bits LSB-first from each byte
+    let mut bits: Vec<bool> = Vec::with_capacity(104);
+    for &b in compact.iter() {
         for bit in 0..8 {
-            bits.push(((b >> bit) & 1) != 0);
-            taken += 1;
-            if taken >= 122 {
-                break 'outer;
+            if bits.len() < 104 {
+                bits.push(((b >> bit) & 1) != 0);
             }
         }
     }
 
-    // Reinsert into 16-byte array, putting version/variant fixed bits as required
+    // Reinsert into 16-byte array, injecting fixed bytes 6, 7, 8
     let mut out = [0u8; 16];
     let mut bit_iter = bits.into_iter();
+
     for (byte_idx, item) in out.iter_mut().enumerate() {
-        let mut acc = 0u8;
-        for bit in (0..8).rev() {
-            let is_fixed_version = byte_idx == 6 && bit >= 4;
-            let is_fixed_variant = byte_idx == 8 && bit >= 6;
-            if is_fixed_version {
-                // version 4 => 0100 in bits 7..4
-                let val = if bit == 6 { 1 } else { 0 }; // bits: 7:0, 6:1, 5:0, 4:0
-                acc |= (val as u8) << bit;
-            } else if is_fixed_variant {
-                // variant RFC4122 => 10 in bits 7..6
-                let val = if bit == 7 { 1 } else { 0 }; // bit7:1, bit6:0
-                acc |= (val as u8) << bit;
-            } else {
+        if byte_idx == 6 {
+            // Fixed byte: version 4 + signature
+            *item = SIGNATURE_BYTE6;
+        } else if byte_idx == 7 {
+            // Fixed byte: signature
+            *item = SIGNATURE_BYTE7;
+        } else if byte_idx == 8 {
+            // Fixed byte: variant + signature
+            *item = SIGNATURE_BYTE8;
+        } else {
+            // Reconstruct from bit stream (MSB first)
+            let mut acc = 0u8;
+            for bit in (0..8).rev() {
                 let v = bit_iter.next().unwrap_or(false) as u8;
                 acc |= v << bit;
             }
+            *item = acc;
         }
-        *item = acc;
     }
 
     Ok(out)
 }
 
 /// Encode a UUID into Base44 compact string.
-pub fn encode_uuid(uuid: Uuid) -> String {
+/// Returns error if UUID does not have the required signature '41c2ae'.
+pub fn encode_uuid(uuid: Uuid) -> Result<String, Uuid45Error> {
     let bytes = uuid.into_bytes();
-    let compact = uuid_to_compact_bytes(&bytes)
-        .expect("uuid_to_compact_bytes should not fail for valid UUID");
-    qr_base44::encode(&compact)
+    let compact = uuid_to_compact_bytes(&bytes)?;
+    Ok(qr_base44::encode(&compact))
 }
 
 /// Try to encode a UUID string into Base44 compact string.
 pub fn encode_uuid_str(s: &str) -> Result<String, Uuid45Error> {
     let uuid = Uuid::parse_str(s).map_err(|e| Uuid45Error::InvalidUuid(e.to_string()))?;
-    Ok(encode_uuid(uuid))
+    encode_uuid(uuid)
 }
 
 /// Encode raw 16-byte UUID into Base44 compact string.
-pub fn encode_uuid_bytes(bytes: &[u8; 16]) -> String {
-    let compact = uuid_to_compact_bytes(bytes).expect("valid path");
-    qr_base44::encode(&compact)
+/// Returns error if UUID does not have the required signature '41c2ae'.
+pub fn encode_uuid_bytes(bytes: &[u8; 16]) -> Result<String, Uuid45Error> {
+    let compact = uuid_to_compact_bytes(bytes)?;
+    Ok(qr_base44::encode(&compact))
 }
 
 /// Decode Base44 compact string into a UUID.
@@ -177,9 +163,22 @@ pub fn decode_to_string(s: &str) -> Result<String, Uuid45Error> {
     Ok(decode_to_uuid(s)?.hyphenated().to_string())
 }
 
-/// Generate a random UUID v4.
+/// Generate a random UUID v4 with fixed bits at positions 13-18 (hex): 41c2ae
+/// This maintains UUID v4 compatibility while adding a recognizable signature.
+/// Format: xxxxxxxx-xxxx-41c2-ae xx-xxxxxxxxxxxx
 pub fn generate_v4() -> Uuid {
-    Uuid::new_v4()
+    let uuid = Uuid::new_v4();
+    let mut bytes = uuid.into_bytes();
+
+    // Fix positions 13-18 in hex representation to "41c2ae"
+    // Position 13-14: byte 6 = 0x41 (version 4 + nibble 1)
+    // Position 15-16: byte 7 = 0xc2
+    // Position 17-18: byte 8 = 0xae (10101110 in binary, high 2 bits '10' satisfy RFC4122 variant)
+    bytes[6] = 0x41;
+    bytes[7] = 0xc2;
+    bytes[8] = 0xae;
+
+    Uuid::from_bytes(bytes)
 }
 
 // ===== WASM bindings =====
@@ -220,31 +219,27 @@ mod tests {
     fn roundtrip_random_v4() {
         for _ in 0..200 {
             let u = generate_v4();
-            let s = encode_uuid(u);
+            let s = encode_uuid(u).unwrap();
             let d = decode_to_uuid(&s).unwrap();
             assert_eq!(u, d);
         }
     }
 
     #[test]
-    fn known_uuid_roundtrip() {
+    fn signature_required() {
+        // UUID without our signature should fail to encode
         let u = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
-        // Ensure version=4 and variant RFC4122
-        assert_eq!(u.get_version_num(), 4);
-        assert!(matches!(u.get_variant(), uuid::Variant::RFC4122));
-        let s = encode_uuid(u);
-        let d = decode_to_uuid(&s).unwrap();
-        assert_eq!(u, d);
+        let err = encode_uuid(u).unwrap_err();
+        assert!(matches!(err, Uuid45Error::InvalidSignature));
     }
 
     #[test]
-    fn padding_bits_zero() {
-        let u = Uuid::parse_str("ffffffff-ffff-4fff-bfff-ffffffffffff").unwrap();
-        // Encode and decode
-        let enc = encode_uuid(u);
-        let raw = qr_base44::decode(&enc).unwrap();
-        assert_eq!(raw.len(), 16);
-        assert_eq!(raw[15] & 0b1111_1100, 0);
+    fn compact_size() {
+        let u = generate_v4();
+        let s = encode_uuid(u).unwrap();
+        let raw = qr_base44::decode(&s).unwrap();
+        // Should be 13 bytes for 104 bits
+        assert_eq!(raw.len(), 13);
     }
 
     #[test]
@@ -265,28 +260,18 @@ mod tests {
     }
 
     #[test]
-    fn non_zero_padding_rejected() {
-        let u = generate_v4();
-        let s = encode_uuid(u);
-        let mut compact = qr_base44::decode(&s).unwrap();
-        assert_eq!(compact.len(), 16);
-        // Flip a high padding bit in last byte
-        compact[15] |= 0b0001_0000;
-        let err = compact_bytes_to_uuid(&compact).unwrap_err();
-        match err {
-            Uuid45Error::NonZeroPadding => {}
-            _ => panic!("expected NonZeroPadding, got {err:?}"),
-        }
-    }
-
-    #[test]
     fn invalid_length_rejected() {
         let u = generate_v4();
-        let s = encode_uuid(u);
+        let s = encode_uuid(u).unwrap();
         let compact = qr_base44::decode(&s).unwrap();
-        let err = compact_bytes_to_uuid(&compact[..15]).unwrap_err();
+        assert_eq!(compact.len(), 13);
+        // Try with wrong length (12 bytes)
+        let err = compact_bytes_to_uuid(&compact[..12]).unwrap_err();
         match err {
-            Uuid45Error::InvalidLength { .. } => {}
+            Uuid45Error::InvalidLength {
+                expected: 13,
+                actual: 12,
+            } => {}
             _ => panic!("expected InvalidLength, got {err:?}"),
         }
     }
@@ -295,10 +280,15 @@ mod tests {
     fn version_and_variant_preserved() {
         for _ in 0..100 {
             let u = generate_v4();
-            let s = encode_uuid(u);
+            let s = encode_uuid(u).unwrap();
             let d = decode_to_uuid(&s).unwrap();
             assert_eq!(d.get_version_num(), 4);
             assert!(matches!(d.get_variant(), uuid::Variant::RFC4122));
+            // Verify signature is preserved
+            let bytes = d.into_bytes();
+            assert_eq!(bytes[6], 0x41);
+            assert_eq!(bytes[7], 0xc2);
+            assert_eq!(bytes[8], 0xae);
         }
     }
 
@@ -306,24 +296,24 @@ mod tests {
     fn reencode_stability() {
         for _ in 0..50 {
             let u = generate_v4();
-            let s1 = encode_uuid(u);
+            let s1 = encode_uuid(u).unwrap();
             let u2 = decode_to_uuid(&s1).unwrap();
-            let s2 = encode_uuid(u2);
+            let s2 = encode_uuid(u2).unwrap();
             assert_eq!(s1, s2);
         }
     }
 
     #[test]
     fn extreme_known_values() {
-        // Minimal v4/RFC4122 compliant bits
-        let u_min = Uuid::parse_str("00000000-0000-4000-8000-000000000000").unwrap();
-        let s = encode_uuid(u_min);
+        // Minimal with signature
+        let u_min = Uuid::parse_str("00000000-0000-41c2-ae00-000000000000").unwrap();
+        let s = encode_uuid(u_min).unwrap();
         let d = decode_to_uuid(&s).unwrap();
         assert_eq!(u_min, d);
 
-        // Maximal within v4/RFC4122 mask already covered by padding_bits_zero
-        let u_max = Uuid::parse_str("ffffffff-ffff-4fff-bfff-ffffffffffff").unwrap();
-        let s2 = encode_uuid(u_max);
+        // Maximal with signature
+        let u_max = Uuid::parse_str("ffffffff-ffff-41c2-aeff-ffffffffffff").unwrap();
+        let s2 = encode_uuid(u_max).unwrap();
         let d2 = decode_to_uuid(&s2).unwrap();
         assert_eq!(u_max, d2);
     }
@@ -337,22 +327,16 @@ mod tests {
 
     #[test]
     fn decode_invalid_length_bytes() {
-        // Make a Base44 string that decodes to 15 bytes (invalid length)
-        let fifteen = vec![0u8; 15];
-        let b45 = qr_base44::encode(&fifteen);
+        // Make a Base44 string that decodes to 12 bytes (invalid length, need 13)
+        let twelve = vec![0u8; 12];
+        let b45 = qr_base44::encode(&twelve);
         let err = decode_to_uuid(&b45).unwrap_err();
-        assert!(matches!(err, Uuid45Error::InvalidLength { .. }));
-    }
-
-    #[test]
-    fn decode_non_zero_padding_via_base44() {
-        let u = generate_v4();
-        let s = encode_uuid(u);
-        let mut compact = qr_base44::decode(&s).unwrap();
-        // set a high padding bit in last byte
-        compact[15] |= 0b0100_0000;
-        let tampered_b45 = qr_base44::encode(&compact);
-        let err = decode_to_uuid(&tampered_b45).unwrap_err();
-        assert!(matches!(err, Uuid45Error::NonZeroPadding));
+        assert!(matches!(
+            err,
+            Uuid45Error::InvalidLength {
+                expected: 13,
+                actual: 12
+            }
+        ));
     }
 }

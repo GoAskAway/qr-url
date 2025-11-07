@@ -4,16 +4,16 @@
 
 Live demo (GitHub Pages): https://goaskaway.github.io/qr-url/
 
-Encode UUID v4 into compact QR-friendly URLs using Base44. Removes the 6 fixed bits (version + variant) for optimal QR code alphanumeric mode encoding.
+Encode UUID v4 into compact QR-friendly URLs using Base44. Removes 24 fixed bits (version + variant + signature "41c2ae") for optimal QR code alphanumeric mode encoding.
 
 ## Overview
 
-This library implements a compact encoding scheme for UUID v4 identifiers:
+This library implements a compact encoding scheme for UUID v4 identifiers with a recognizable signature:
 
-- **Input**: Standard UUID v4 (128 bits)
-- **Optimization**: Remove 6 deterministic bits (4-bit version + 2-bit variant) → 122 bits of entropy
+- **Input**: UUID v4 with signature `xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx` (128 bits)
+- **Optimization**: Remove 24 deterministic bits (4-bit version + 2-bit variant + 18-bit signature) → 104 bits of entropy
 - **Encoding**: Base44 (QR alphanumeric alphabet excluding space)
-- **Output**: Compact URL-safe string (typically 24-25 characters)
+- **Output**: Compact URL-safe string (typically 20-21 characters)
 
 ### Why Base44 instead of Base45?
 
@@ -33,10 +33,12 @@ This library implements a compact encoding scheme for UUID v4 identifiers:
 
 ### Features
 
-- ✅ Convert UUID v4 (128-bit) to compact Base44 by removing 6 fixed bits, leaving 122 bits of entropy
+- ✅ Convert UUID v4 (128-bit) to compact Base44 by removing 24 fixed bits (version + variant + signature), leaving 104 bits of entropy
+- ✅ Generated UUIDs have recognizable signature `41c2-ae` for easy identification
 - ✅ Perfect for QR code generation (alphanumeric mode optimization)
 - ✅ URL embedding without any percent-encoding required
-- ✅ Lossless bidirectional conversion (decode restores exact original UUID)
+- ✅ Lossless bidirectional conversion (decode restores exact original UUID with signature)
+- ✅ Only encodes UUIDs with the required signature (rejects non-matching UUIDs)
 - ✅ Rust library, CLI tool, and WASM bindings for web applications
 
 ## Install
@@ -124,13 +126,21 @@ A live demo is automatically published to GitHub Pages:
 ## Tests
 
 `cargo test` includes:
-- Random UUID roundtrips
-- Known UUID roundtrip
-- Padding bits verification
+- Random UUID roundtrips with signature verification
+- Signature requirement enforcement
+- Compact size validation (13 bytes)
+- Version and variant preservation
 
-## Why 122 bits?
+## Why 104 bits?
 
-UUID v4 reserves 4 bits for version and 2 bits for variant. These are fixed values (0100 and 10). Removing them yields 128-6 = 122 bits of entropy. We pack these into 16 bytes, with only 2 bits used in the last byte; the upper 6 bits of the last byte are zero padding. Base45 then encodes these bytes.
+UUID v4 reserves:
+- 4 bits for version (0100 = 4)
+- 2 bits for variant (10 = RFC4122)
+- 18 bits for our signature "41c2ae" (excluding the version/variant bits already counted)
+
+Total fixed bits: 4 + 2 + 18 = 24 bits
+
+Removing them yields 128 - 24 = 104 bits of entropy. We pack these into exactly 13 bytes. Base44 then encodes these bytes into approximately 20-21 characters.
 
 ## License
 

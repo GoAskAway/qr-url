@@ -68,7 +68,7 @@ fn main() {
         }
         Some("gen") => {
             let u = generate_v4();
-            let b45 = encode_uuid(u);
+            let b45 = encode_uuid(u).expect("generate_v4 should produce valid signature UUID");
             if quiet {
                 println!("{b45}");
                 return;
@@ -83,14 +83,19 @@ fn main() {
                 std::process::exit(2);
             }
             match parse_uuid_input(&args[2]) {
-                Ok(bytes) => {
-                    let s = encode_uuid_bytes(&bytes);
-                    if quiet {
-                        println!("{s}");
-                    } else {
-                        println!("Base44: {s}");
+                Ok(bytes) => match encode_uuid_bytes(&bytes) {
+                    Ok(s) => {
+                        if quiet {
+                            println!("{s}");
+                        } else {
+                            println!("Base44: {s}");
+                        }
                     }
-                }
+                    Err(e) => {
+                        eprintln!("Encode error: {e}");
+                        std::process::exit(2);
+                    }
+                },
                 Err(e) => {
                     eprintln!("{e}");
                     std::process::exit(2);
