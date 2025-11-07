@@ -1,14 +1,14 @@
 [package]
-name = "qr-url-uuid4"
+name = "qr-url"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 authors = ["kookyleo <kookyleo@gmail.com>"]
-description = "Encode UUID v4 into compact QR-friendly URLs using Base44 (removes 6 fixed bits, alphanumeric mode optimized, no space character)"
+description = "Encode UUID v4 into compact QR-friendly URLs using Base44 (removes 24 fixed bits including signature, alphanumeric mode optimized, no space character)"
 license = "Apache-2.0"
 repository = "https://github.com/GoAskAway/qr-url"
 
 [lib]
-name = "qr_url_uuid4"
+name = "qr_url"
 crate-type = ["rlib", "cdylib"]
 
 [features]
@@ -16,7 +16,7 @@ default = []
 
 [dependencies]
 uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
-thiserror = "1"
+thiserror = "2"
 hex = "0.4"
 qr-base44 = "0.1"
 
@@ -24,7 +24,7 @@ qr-base44 = "0.1"
 wasm-bindgen = { version = "0.2" }
 
 [dev-dependencies]
-rand = "0.8"
+rand = "0.9"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
@@ -32,6 +32,6 @@ uuid = { version = "1", features = ["js"] }
 js-sys = "0.3"
 
 [[bin]]
-name = "qr-url-uuid4"
-path = "src/bin/qr-url-uuid4.rs"
+name = "qr-url"
+path = "src/bin/qr-url.rs"
 

@@ -1,6 +1,6 @@
-# WASM Demo for qr-url-uuid4
+# WASM Demo for qr-url
 
-This example demonstrates using the qr-url-uuid4 WASM bindings in a simple HTML page.
+This example demonstrates using the qr-url WASM bindings in a simple HTML page.
 
 What it shows:
 - Generate UUID v4 in the browser (via wasm)
@@ -36,14 +36,14 @@ rustup target add wasm32-unknown-unknown
 cargo build --release --target wasm32-unknown-unknown
 wasm-bindgen --target web --no-typescript \
   --out-dir examples/wasm/pkg \
-  --out-name qr_url_uuid4 \
-  target/wasm32-unknown-unknown/release/qr_url_uuid4.wasm
+  --out-name qr_url \
+  target/wasm32-unknown-unknown/release/qr_url.wasm
 ```
 
 Option B: wasm-pack
 ```
 # cargo install wasm-pack
-wasm-pack build --target web --out-dir examples/wasm/pkg --out-name qr_url_uuid4
+wasm-pack build --target web --out-dir examples/wasm/pkg --out-name qr_url
 ```
 
 Then serve the folder:

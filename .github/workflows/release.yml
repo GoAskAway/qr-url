@@ -40,8 +40,8 @@ jobs:
           mkdir -p examples/wasm/pkg
           wasm-bindgen --target web --no-typescript \
             --out-dir examples/wasm/pkg \
-            --out-name qr_url_uuid4 \
-            target/wasm32-unknown-unknown/release/qr_url_uuid4.wasm
+            --out-name qr_url \
+            target/wasm32-unknown-unknown/release/qr_url.wasm
 
       - name: Archive wasm demo (minimal)
         run: |

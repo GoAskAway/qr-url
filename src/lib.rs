@@ -1,4 +1,4 @@
-//! qr-url-uuid4: Compact Base44 codec for UUID v4 by stripping 24 fixed bits.
+//! qr-url: Compact Base44 codec for UUID v4 by stripping 24 fixed bits.
 //! - 128-bit UUID v4 -> remove version(4b) + variant(2b) + signature "41c2ae"(18b) => 104 bits, pack to 13 bytes => Base44
 //! - Reverse to reconstruct a canonical UUID v4 with signature "xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx"
 //! - Optimized for QR code alphanumeric mode and URL embedding (Base44 = Base45 without space character)

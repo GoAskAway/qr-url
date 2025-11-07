@@ -301,7 +301,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (typeof module_or_path === 'undefined') {
-        module_or_path = new URL('qr_url_uuid4_bg.wasm', import.meta.url);
+        module_or_path = new URL('qr_url_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 

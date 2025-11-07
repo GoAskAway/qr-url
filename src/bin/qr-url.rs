@@ -1,11 +1,11 @@
-use qr_url_uuid4::{
-    decode_to_bytes, decode_to_string, encode_uuid, encode_uuid_bytes, generate_v4,
-};
+use qr_url::{decode_to_bytes, decode_to_string, encode_uuid, encode_uuid_bytes, generate_v4};
 use std::io::{self, Read};
 use uuid::Uuid;
 
 fn print_usage() {
-    eprintln!("qr-url-uuid4 CLI\n\nCommands:\n  gen                       Generate a random UUID v4 and print Base44 and UUID\n  encode <UUID|HEX|@->     Encode a UUID into Base44. Accepts:\n                           - canonical UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)\n                           - 32-hex (no dashes)\n                           - raw 16-byte hex prefixed with 0x? use stdin with @- to read 16 bytes\n  decode <BASE44|@->       Decode Base44 string back to UUID string and bytes (hex)\n\nOptions:\n  -q, --quiet              Only print the primary output\n  -h, --help               Show this help\n\nExamples:\n  qr-url-uuid4 gen\n  qr-url-uuid4 encode 550e8400-e29b-41d4-a716-446655440000\n  qr-url-uuid4 decode XYZ...\n");
+    eprintln!(
+        "qr-url CLI\n\nCommands:\n  gen                       Generate a random UUID v4 with signature '41c2ae' and print Base44 and UUID\n  encode <UUID|HEX|@->     Encode a UUID into Base44 (requires '41c2ae' signature). Accepts:\n                           - canonical UUID string (xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx)\n                           - 32-hex (no dashes)\n                           - raw 16-byte hex prefixed with 0x? use stdin with @- to read 16 bytes\n  decode <BASE44|@->       Decode Base44 string back to UUID string and bytes (hex)\n\nOptions:\n  -q, --quiet              Only print the primary output\n  -h, --help               Show this help\n\nExamples:\n  qr-url gen\n  qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f\n  qr-url decode 2OLHMVYLDMPNRBLK50W5\n"
+    );
 }
 
 fn parse_uuid_input(arg: &str) -> io::Result<[u8; 16]> {

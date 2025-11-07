@@ -1,4 +1,4 @@
-# qr-url-uuid4
+# qr-url
 
 [![CI](https://github.com/GoAskAway/qr-url/actions/workflows/ci.yml/badge.svg)](https://github.com/GoAskAway/qr-url/actions/workflows/ci.yml)
 
@@ -44,17 +44,17 @@ This library implements a compact encoding scheme for UUID v4 identifiers with a
 ## Install
 
 - Build CLI: `cargo install --path .`
-- Use as a lib: add `qr-url-uuid4 = { git = "https://github.com/GoAskAway/qr-url.git" }` or use a local path dependency.
+- Use as a lib: add `qr-url = { git = "https://github.com/GoAskAway/qr-url.git" }` or use a local path dependency.
 
 ## CLI usage
 
 ```
-qr-url-uuid4
+qr-url
 
 Commands:
-  gen                       Generate a random UUID v4 and print Base44 and UUID
-  encode <UUID|HEX|@->     Encode a UUID into Base44. Accepts:
-                           - canonical UUID string (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+  gen                       Generate a random UUID v4 with signature '41c2ae' and print Base44 and UUID
+  encode <UUID|HEX|@->     Encode a UUID into Base44 (requires '41c2ae' signature). Accepts:
+                           - canonical UUID string (xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx)
                            - 32-hex (no dashes)
                            - raw 16-byte via stdin with @-
   decode <BASE44|@->       Decode Base44 string back to UUID string and bytes (hex)
@@ -65,9 +65,9 @@ Options:
 ```
 
 Examples:
-- `qr-url-uuid4 gen`
-- `qr-url-uuid4 encode 550e8400-e29b-41d4-a716-446655440000`
-- `qr-url-uuid4 decode <base44-string>`
+- `qr-url gen`
+- `qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f`
+- `qr-url decode 2OLHMVYLDMPNRBLK50W5`
 
 ## Library API
 
@@ -98,12 +98,12 @@ rustup target add wasm32-unknown-unknown
 cargo build --release --target wasm32-unknown-unknown
 wasm-bindgen --target web --no-typescript \
   --out-dir examples/wasm/pkg \
-  --out-name qr_url_uuid4 \
-  target/wasm32-unknown-unknown/release/qr_url_uuid4.wasm
+  --out-name qr_url \
+  target/wasm32-unknown-unknown/release/qr_url.wasm
 
 # Or using wasm-pack
 # cargo install wasm-pack
-# wasm-pack build --target web --out-dir examples/wasm/pkg --out-name qr_url_uuid4
+# wasm-pack build --target web --out-dir examples/wasm/pkg --out-name qr_url
 ```
 
 - Open `examples/wasm/index.html` via a static server (e.g., `python3 -m http.server`) and navigate to it.
