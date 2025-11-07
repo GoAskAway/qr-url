@@ -58,7 +58,11 @@ pub fn uuid_to_compact_bytes(uuid_bytes: &[u8; 16]) -> Result<[u8; 13], Uuid45Er
             continue;
         }
         // For byte 0, skip the first bit (bit 7)
-        let bit_range = if byte_idx == 0 { (0..7).rev() } else { (0..8).rev() };
+        let bit_range = if byte_idx == 0 {
+            (0..7).rev()
+        } else {
+            (0..8).rev()
+        };
         for bit in bit_range {
             let mask = 1u8 << bit;
             out_bits.push((b & mask) != 0);
