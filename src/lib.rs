@@ -20,44 +20,14 @@ pub enum Uuid45Error {
     InvalidSignature,
 }
 
-/// Base44 alphabet for QR code alphanumeric mode (excluding space)
-const BASE44_ALPHABET: &[u8; 44] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$%*+-./:";
-
-/// Encode 103 bits (stored in 13 bytes) into optimal 19-character Base44 string.
-///
-/// This achieves optimal encoding: 2^103 < 44^19, so all 103-bit values
-/// fit exactly in 19 Base44 characters (vs 20 with byte-pair encoding).
-///
-/// Input: 103 bits packed in 13 bytes, LSB-first order.
-/// Output: Exactly 19 Base44 characters.
+/// Encode 13 bytes (103 bits) as Base44 string (19 characters) using qr-base44's optimal encoding.
 fn encode_base44_optimal(bytes: &[u8; 13]) -> String {
-    // Convert 103-bit value to u128 (little-endian, LSB-first)
-    let mut value: u128 = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        value |= (b as u128) << (i * 8);
-    }
-
-    // Convert to base44 (exactly 19 characters for 103 bits)
-    let mut result = Vec::with_capacity(19);
-    let mut v = value;
-    for _ in 0..19 {
-        let digit = (v % 44) as usize;
-        result.push(BASE44_ALPHABET[digit]);
-        v /= 44;
-    }
-
-    // Reverse to get most significant digit first
-    result.reverse();
-    String::from_utf8(result).unwrap()
+    qr_base44::encode_bits(103, bytes)
 }
 
-/// Decode 19-character Base44 string back to 103 bits (stored in 13 bytes).
-///
-/// Input: Exactly 19 Base44 characters.
-/// Output: 103 bits packed in 13 bytes, LSB-first order.
-///
-/// Returns error if length != 19, invalid characters, or value exceeds 103 bits.
+/// Decode Base44 string (19 characters) back to 13 bytes (103 bits) using qr-base44.
 fn decode_base44_optimal(s: &str) -> Result<[u8; 13], Uuid45Error> {
+    // Enforce 19-character length for our 103-bit encoding
     if s.len() != 19 {
         return Err(Uuid45Error::InvalidBase44(format!(
             "Expected 19 characters, got {}",
@@ -65,31 +35,18 @@ fn decode_base44_optimal(s: &str) -> Result<[u8; 13], Uuid45Error> {
         )));
     }
 
-    // Convert base44 string to u128
-    let mut value: u128 = 0;
-    for ch in s.chars() {
-        let digit = BASE44_ALPHABET
-            .iter()
-            .position(|&c| c == ch as u8)
-            .ok_or_else(|| Uuid45Error::InvalidBase44(format!("Invalid character: {}", ch)))?;
-        value = value * 44 + (digit as u128);
+    let vec = qr_base44::decode_bits(103, s)
+        .map_err(|e| Uuid45Error::InvalidBase44(e.to_string()))?;
+
+    if vec.len() != 13 {
+        return Err(Uuid45Error::InvalidLength {
+            expected: 13,
+            actual: vec.len(),
+        });
     }
 
-    // Convert u128 back to 13 bytes (little-endian)
     let mut bytes = [0u8; 13];
-    for i in 0..13 {
-        bytes[i] = (value & 0xFF) as u8;
-        value >>= 8;
-    }
-
-    // Verify that the value fits in 103 bits (not 104)
-    // After extracting 13 bytes (104 bits), remaining value should be 0
-    if value != 0 {
-        return Err(Uuid45Error::InvalidBase44(
-            "Value exceeds 103 bits".to_string(),
-        ));
-    }
-
+    bytes.copy_from_slice(&vec);
     Ok(bytes)
 }
 
@@ -436,12 +393,7 @@ mod tests {
         for _ in 0..20 {
             let u = generate_v4();
             let encoded = encode_uuid(u).unwrap();
-            assert_eq!(
-                encoded.len(),
-                19,
-                "Expected 19 chars, got {}",
-                encoded.len()
-            );
+            assert_eq!(encoded.len(), 19, "Expected 19 chars, got {}", encoded.len());
             // Verify decode works
             let decoded = decode_to_uuid(&encoded).unwrap();
             assert_eq!(u, decoded);
