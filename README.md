@@ -4,16 +4,16 @@
 
 Live demo (GitHub Pages): https://goaskaway.github.io/qr-url/
 
-Encode UUID v4 into compact QR-friendly URLs using Base44. Removes 24 fixed bits (version + variant + signature "41c2ae") for optimal QR code alphanumeric mode encoding.
+Encode UUID v4 into compact QR-friendly URLs using Base44. Removes 25 fixed bits (first bit + version + variant + signature "41c2ae") for optimal QR code alphanumeric mode encoding.
 
 ## Overview
 
 This library implements a compact encoding scheme for UUID v4 identifiers with a recognizable signature:
 
-- **Input**: UUID v4 with signature `xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx` (128 bits)
-- **Optimization**: Remove 24 deterministic bits (4-bit version + 2-bit variant + 18-bit signature) → 104 bits of entropy
+- **Input**: UUID v4 with signature `0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx` (128 bits, first hex char is 0-7)
+- **Optimization**: Remove 25 deterministic bits (1-bit first + 4-bit version + 2-bit variant + 18-bit signature) → 103 bits of entropy
 - **Encoding**: Base44 (QR alphanumeric alphabet excluding space)
-- **Output**: Compact URL-safe string (typically 20-21 characters)
+- **Output**: Compact URL-safe string (typically 20 characters)
 
 ### Why Base44 instead of Base45?
 
@@ -33,12 +33,12 @@ This library implements a compact encoding scheme for UUID v4 identifiers with a
 
 ### Features
 
-- ✅ Convert UUID v4 (128-bit) to compact Base44 by removing 24 fixed bits (version + variant + signature), leaving 104 bits of entropy
-- ✅ Generated UUIDs have recognizable signature `41c2-ae` for easy identification
+- ✅ Convert UUID v4 (128-bit) to compact Base44 by removing 25 fixed bits (first bit + version + variant + signature), leaving 103 bits of entropy
+- ✅ Generated UUIDs have recognizable signature `41c2-ae` and first hex char 0-7 for easy identification
 - ✅ Perfect for QR code generation (alphanumeric mode optimization)
 - ✅ URL embedding without any percent-encoding required
 - ✅ Lossless bidirectional conversion (decode restores exact original UUID with signature)
-- ✅ Only encodes UUIDs with the required signature (rejects non-matching UUIDs)
+- ✅ Only encodes UUIDs with the required signature and first bit = 0 (rejects non-matching UUIDs)
 - ✅ Rust library, CLI tool, and WASM bindings for web applications
 
 ## Install
@@ -126,21 +126,22 @@ A live demo is automatically published to GitHub Pages:
 ## Tests
 
 `cargo test` includes:
-- Random UUID roundtrips with signature verification
-- Signature requirement enforcement
-- Compact size validation (13 bytes)
+- Random UUID roundtrips with signature and first bit verification
+- Signature and first bit requirement enforcement
+- Compact size validation (13 bytes for 103 bits)
 - Version and variant preservation
 
-## Why 104 bits?
+## Why 103 bits?
 
 UUID v4 reserves:
+- 1 bit for first bit (always 0)
 - 4 bits for version (0100 = 4)
 - 2 bits for variant (10 = RFC4122)
 - 18 bits for our signature "41c2ae" (excluding the version/variant bits already counted)
 
-Total fixed bits: 4 + 2 + 18 = 24 bits
+Total fixed bits: 1 + 4 + 2 + 18 = 25 bits
 
-Removing them yields 128 - 24 = 104 bits of entropy. We pack these into exactly 13 bytes. Base44 then encodes these bytes into approximately 20-21 characters.
+Removing them yields 128 - 25 = 103 bits of entropy. We pack these into 13 bytes (last byte uses 7 bits). Base44 then encodes these bytes into approximately 20 characters.
 
 ## License
 

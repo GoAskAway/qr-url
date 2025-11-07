@@ -1,6 +1,7 @@
-//! qr-url: Compact Base44 codec for UUID v4 by stripping 24 fixed bits.
-//! - 128-bit UUID v4 -> remove version(4b) + variant(2b) + signature "41c2ae"(18b) => 104 bits, pack to 13 bytes => Base44
-//! - Reverse to reconstruct a canonical UUID v4 with signature "xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx"
+//! qr-url: Compact Base44 codec for UUID v4 by stripping 25 fixed bits.
+//! - 128-bit UUID v4 -> remove version(4b) + variant(2b) + signature "41c2ae"(18b) + first bit(1b) => 103 bits, pack to 13 bytes => Base44
+//! - First bit (bit 0 of byte 0) is always 0, removed during encoding
+//! - Reverse to reconstruct a canonical UUID v4 with signature "0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx"
 //! - Optimized for QR code alphanumeric mode and URL embedding (Base44 = Base45 without space character)
 //!   Provides: library API, WASM bindings (target wasm32), and CLI tool.
 
@@ -27,10 +28,10 @@ const SIGNATURE_BYTE6: u8 = 0x41;
 const SIGNATURE_BYTE7: u8 = 0xc2;
 const SIGNATURE_BYTE8: u8 = 0xae;
 
-/// Extract 104-bit compact representation from a canonical UUID v4 byte array.
-/// Removes 24 fixed bits: version(4) + variant(2) + signature "41c2ae"(18).
-/// Returns 13 bytes containing exactly 104 bits (last byte uses all 8 bits).
-/// Returns error if UUID does not have the required signature.
+/// Extract 103-bit compact representation from a canonical UUID v4 byte array.
+/// Removes 25 fixed bits: first bit(1) + version(4) + variant(2) + signature "41c2ae"(18).
+/// Returns 13 bytes containing 103 bits (last byte uses 7 bits, MSB is 0).
+/// Returns error if UUID does not have the required signature or first bit is not 0.
 pub fn uuid_to_compact_bytes(uuid_bytes: &[u8; 16]) -> Result<[u8; 13], Uuid45Error> {
     // Verify UUID has the required signature
     if uuid_bytes[6] != SIGNATURE_BYTE6
@@ -40,32 +41,39 @@ pub fn uuid_to_compact_bytes(uuid_bytes: &[u8; 16]) -> Result<[u8; 13], Uuid45Er
         return Err(Uuid45Error::InvalidSignature);
     }
 
-    // Gather all 128 bits, skip the 24 fixed ones:
+    // Verify first bit (MSB of byte 0) is 0
+    if uuid_bytes[0] & 0b1000_0000 != 0 {
+        return Err(Uuid45Error::InvalidSignature);
+    }
+
+    // Gather all 128 bits, skip the 25 fixed ones:
+    // - byte 0 bit 7: skip (first bit, always 0)
     // - byte 6: skip all 8 bits (version + signature)
     // - byte 7: skip all 8 bits (signature)
     // - byte 8: skip all 8 bits (variant + signature)
-    let mut out_bits = Vec::with_capacity(104);
+    let mut out_bits = Vec::with_capacity(103);
     for (byte_idx, b) in uuid_bytes.iter().copied().enumerate().take(16) {
         // Skip bytes 6, 7, 8 entirely (they are all fixed)
         if byte_idx == 6 || byte_idx == 7 || byte_idx == 8 {
             continue;
         }
-        // Keep all bits from other bytes
-        for bit in (0..8).rev() {
+        // For byte 0, skip the first bit (bit 7)
+        let bit_range = if byte_idx == 0 { (0..7).rev() } else { (0..8).rev() };
+        for bit in bit_range {
             let mask = 1u8 << bit;
             out_bits.push((b & mask) != 0);
         }
     }
-    assert_eq!(out_bits.len(), 104);
+    assert_eq!(out_bits.len(), 103);
 
-    // Pack into 13 bytes (ceil(104/8) = 13).
+    // Pack into 13 bytes (ceil(103/8) = 13, last byte uses 7 bits).
     // We pack LSB-first for consistency.
     let mut out = [0u8; 13];
     let mut bit_idx = 0;
     for item in &mut out {
         let mut acc = 0u8;
         for bit in 0..8 {
-            if bit_idx < 104 {
+            if bit_idx < 103 {
                 acc |= (out_bits[bit_idx] as u8) << bit;
                 bit_idx += 1;
             }
@@ -76,8 +84,8 @@ pub fn uuid_to_compact_bytes(uuid_bytes: &[u8; 16]) -> Result<[u8; 13], Uuid45Er
     Ok(out)
 }
 
-/// Reconstruct full 128-bit UUID bytes from a compact 104-bit packed representation.
-/// Accepts 13 bytes containing 104 bits. Restores fixed signature bytes 6, 7, 8.
+/// Reconstruct full 128-bit UUID bytes from a compact 103-bit packed representation.
+/// Accepts 13 bytes containing 103 bits. Restores first bit (0), signature bytes 6, 7, 8.
 pub fn compact_bytes_to_uuid(compact: &[u8]) -> Result<[u8; 16], Uuid45Error> {
     if compact.len() != 13 {
         return Err(Uuid45Error::InvalidLength {
@@ -86,17 +94,17 @@ pub fn compact_bytes_to_uuid(compact: &[u8]) -> Result<[u8; 16], Uuid45Error> {
         });
     }
 
-    // Unpack 104 bits LSB-first from each byte
-    let mut bits: Vec<bool> = Vec::with_capacity(104);
+    // Unpack 103 bits LSB-first from each byte
+    let mut bits: Vec<bool> = Vec::with_capacity(103);
     for &b in compact.iter() {
         for bit in 0..8 {
-            if bits.len() < 104 {
+            if bits.len() < 103 {
                 bits.push(((b >> bit) & 1) != 0);
             }
         }
     }
 
-    // Reinsert into 16-byte array, injecting fixed bytes 6, 7, 8
+    // Reinsert into 16-byte array, injecting fixed bit 0 and bytes 6, 7, 8
     let mut out = [0u8; 16];
     let mut bit_iter = bits.into_iter();
 
@@ -110,8 +118,17 @@ pub fn compact_bytes_to_uuid(compact: &[u8]) -> Result<[u8; 16], Uuid45Error> {
         } else if byte_idx == 8 {
             // Fixed byte: variant + signature
             *item = SIGNATURE_BYTE8;
+        } else if byte_idx == 0 {
+            // Byte 0: first bit is 0 (fixed), then 7 bits from stream
+            let mut acc = 0u8;
+            for bit in (0..7).rev() {
+                let v = bit_iter.next().unwrap_or(false) as u8;
+                acc |= v << bit;
+            }
+            // MSB (bit 7) is always 0
+            *item = acc & 0b0111_1111;
         } else {
-            // Reconstruct from bit stream (MSB first)
+            // Reconstruct from bit stream (MSB first, all 8 bits)
             let mut acc = 0u8;
             for bit in (0..8).rev() {
                 let v = bit_iter.next().unwrap_or(false) as u8;
@@ -163,9 +180,9 @@ pub fn decode_to_string(s: &str) -> Result<String, Uuid45Error> {
     Ok(decode_to_uuid(s)?.hyphenated().to_string())
 }
 
-/// Generate a random UUID v4 with fixed bits at positions 13-18 (hex): 41c2ae
+/// Generate a random UUID v4 with fixed bits at positions 13-18 (hex): 41c2ae and first bit 0
 /// This maintains UUID v4 compatibility while adding a recognizable signature.
-/// Format: xxxxxxxx-xxxx-41c2-ae xx-xxxxxxxxxxxx
+/// Format: 0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx (first hex char is 0-7)
 pub fn generate_v4() -> Uuid {
     let uuid = Uuid::new_v4();
     let mut bytes = uuid.into_bytes();
@@ -177,6 +194,9 @@ pub fn generate_v4() -> Uuid {
     bytes[6] = 0x41;
     bytes[7] = 0xc2;
     bytes[8] = 0xae;
+
+    // Fix first bit (MSB of byte 0) to 0
+    bytes[0] &= 0b0111_1111;
 
     Uuid::from_bytes(bytes)
 }
@@ -231,6 +251,18 @@ mod tests {
         let u = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let err = encode_uuid(u).unwrap_err();
         assert!(matches!(err, Uuid45Error::InvalidSignature));
+    }
+
+    #[test]
+    fn first_bit_must_be_zero() {
+        // UUID with first bit = 1 should fail to encode (even with correct signature)
+        let u = Uuid::parse_str("ffffffff-ffff-41c2-aeff-ffffffffffff").unwrap();
+        let err = encode_uuid(u).unwrap_err();
+        assert!(matches!(err, Uuid45Error::InvalidSignature));
+
+        // UUID with first bit = 0 should succeed
+        let u_ok = Uuid::parse_str("7fffffff-ffff-41c2-aeff-ffffffffffff").unwrap();
+        assert!(encode_uuid(u_ok).is_ok());
     }
 
     #[test]
@@ -305,14 +337,14 @@ mod tests {
 
     #[test]
     fn extreme_known_values() {
-        // Minimal with signature
+        // Minimal with signature and first bit 0
         let u_min = Uuid::parse_str("00000000-0000-41c2-ae00-000000000000").unwrap();
         let s = encode_uuid(u_min).unwrap();
         let d = decode_to_uuid(&s).unwrap();
         assert_eq!(u_min, d);
 
-        // Maximal with signature
-        let u_max = Uuid::parse_str("ffffffff-ffff-41c2-aeff-ffffffffffff").unwrap();
+        // Maximal with signature and first bit 0 (first byte max is 0x7F)
+        let u_max = Uuid::parse_str("7fffffff-ffff-41c2-aeff-ffffffffffff").unwrap();
         let s2 = encode_uuid(u_max).unwrap();
         let d2 = decode_to_uuid(&s2).unwrap();
         assert_eq!(u_max, d2);
