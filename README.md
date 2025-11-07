@@ -1,8 +1,8 @@
 # qr-url-uuid4
 
-[![CI](https://github.com/kookyleo/qr-url-uuid4/actions/workflows/ci.yml/badge.svg)](https://github.com/kookyleo/qr-url-uuid4/actions/workflows/ci.yml)
+[![CI](https://github.com/GoAskAway/qr-url/actions/workflows/ci.yml/badge.svg)](https://github.com/GoAskAway/qr-url/actions/workflows/ci.yml)
 
-Live demo (GitHub Pages): https://kookyleo.github.io/qr-url-uuid4/
+Live demo (GitHub Pages): https://goaskaway.github.io/qr-url/
 
 Encode UUID v4 into compact QR-friendly URLs using Base44. Removes the 6 fixed bits (version + variant) for optimal QR code alphanumeric mode encoding.
 
@@ -42,7 +42,7 @@ This library implements a compact encoding scheme for UUID v4 identifiers:
 ## Install
 
 - Build CLI: `cargo install --path .`
-- Use as a lib: add `qr-url-uuid4 = { git = "https://github.com/kookyleo/qr-url-uuid4.git" }` or use a local path dependency.
+- Use as a lib: add `qr-url-uuid4 = { git = "https://github.com/GoAskAway/qr-url.git" }` or use a local path dependency.
 
 ## CLI usage
 
@@ -109,12 +109,12 @@ wasm-bindgen --target web --no-typescript \
 ## GitHub Pages
 
 A live demo is automatically published to GitHub Pages:
-- https://kookyleo.github.io/qr-url-uuid4/
+- https://goaskaway.github.io/qr-url/
 
 ## Download artifacts
 
-- From CI (latest run): Navigate to Actions, select the latest successful run of the CI workflow, and download the artifact named "wasm-demo". Link: https://github.com/kookyleo/qr-url-uuid4/actions
-- From Releases: For tagged releases (v*), download the attached wasm-demo.tar.gz from the Releases page. Link: https://github.com/kookyleo/qr-url-uuid4/releases
+- From CI (latest run): Navigate to Actions, select the latest successful run of the CI workflow, and download the artifact named "wasm-demo". Link: https://github.com/GoAskAway/qr-url/actions
+- From Releases: For tagged releases (v*), download the attached wasm-demo.tar.gz from the Releases page. Link: https://github.com/GoAskAway/qr-url/releases
 
 ### Using the wasm-demo artifact locally
 - Unpack wasm-demo.tar.gz

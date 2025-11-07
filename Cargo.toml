@@ -2,10 +2,10 @@
 name = "qr-url-uuid4"
 version = "0.2.0"
 edition = "2021"
-authors = ["Rovo Dev <dev@example.com>"]
+authors = ["kookyleo <kookyleo@gmail.com>"]
 description = "Encode UUID v4 into compact QR-friendly URLs using Base44 (removes 6 fixed bits, alphanumeric mode optimized, no space character)"
 license = "Apache-2.0"
-repository = "https://github.com/kookyleo/qr-url-uuid4"
+repository = "https://github.com/GoAskAway/qr-url"
 
 [lib]
 name = "qr_url_uuid4"
