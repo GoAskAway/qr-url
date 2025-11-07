@@ -4,13 +4,13 @@
 
 Live demo (GitHub Pages): https://goaskaway.github.io/qr-url/
 
-Encode UUID v4 into compact QR-friendly URLs using Base44. Removes 25 fixed bits (first bit + version + variant + signature "41c2ae") for optimal QR code alphanumeric mode encoding.
+Encode custom UUID identifiers into compact QR-friendly URLs using Base44. This is a **UUID v4 variant** with a fixed signature pattern, optimized for QR code alphanumeric mode encoding.
 
 ## Overview
 
-This library implements a compact encoding scheme for UUID v4 identifiers with a recognizable signature:
+This library implements a compact encoding scheme for **custom UUID identifiers** (not standard UUID v4, but a recognizable variant):
 
-- **Input**: UUID v4 with signature `0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx` (128 bits, first hex char is 0-7)
+- **Input**: Custom UUID with signature `0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx` (128 bits, first hex char is 0-7)
 - **Optimization**: Remove 25 deterministic bits (1-bit first + 4-bit version + 2-bit variant + 18-bit signature) → 103 bits of entropy
 - **Encoding**: Base44 optimal bit encoding (QR alphanumeric alphabet excluding space)
 - **Output**: Compact URL-safe string (exactly 19 characters)
@@ -33,13 +33,16 @@ This library implements a compact encoding scheme for UUID v4 identifiers with a
 
 ### Features
 
-- ✅ Convert UUID v4 (128-bit) to compact Base44 by removing 25 fixed bits (first bit + version + variant + signature), leaving 103 bits of entropy
-- ✅ Generated UUIDs have recognizable signature `41c2-ae` and first hex char 0-7 for easy identification
-- ✅ Perfect for QR code generation (alphanumeric mode optimization)
+- ✅ Generate custom UUID variant with fixed signature `41c2-ae` for domain-specific identification
+- ✅ Convert custom UUID (128-bit) to compact Base44 by removing 25 fixed bits, leaving 103 bits of entropy
+- ✅ First hex character is always 0-7, providing additional recognizable pattern
+- ✅ Perfect for QR code generation (alphanumeric mode optimization, exactly 19 characters)
 - ✅ URL embedding without any percent-encoding required
 - ✅ Lossless bidirectional conversion (decode restores exact original UUID with signature)
-- ✅ Only encodes UUIDs with the required signature and first bit = 0 (rejects non-matching UUIDs)
+- ✅ Only encodes UUIDs with the required signature and first bit = 0 (rejects standard UUID v4 without signature)
 - ✅ Rust library, CLI tool, and WASM bindings for web applications
+
+**Important**: This library generates and encodes a **custom UUID variant**, not standard RFC4122 UUID v4. The fixed signature `41c2-ae` makes these UUIDs easily identifiable for your application domain.
 
 ## Install
 
@@ -52,8 +55,8 @@ This library implements a compact encoding scheme for UUID v4 identifiers with a
 qr-url
 
 Commands:
-  gen                       Generate a random UUID v4 with signature '41c2ae' and print Base44 and UUID
-  encode <UUID|HEX|@->     Encode a UUID into Base44 (requires '41c2ae' signature). Accepts:
+  gen                       Generate a random custom UUID with signature '41c2ae' and print Base44 and UUID
+  encode <UUID|HEX|@->     Encode a custom UUID into Base44 (requires '41c2ae' signature). Accepts:
                            - canonical UUID string (xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx)
                            - 32-hex (no dashes)
                            - raw 16-byte via stdin with @-
@@ -66,19 +69,19 @@ Options:
 
 Examples:
 ```bash
-# Generate a new UUID with signature
+# Generate a new custom UUID with signature (19 characters)
 $ qr-url gen
-Base44: 689Y6V4-K:2UIMGHWD9
-UUID:   5050366f-711d-41c2-ae6b-a5d52dbfd5dc
-Bytes:  5050366f711d41c2ae6ba5d52dbfd5dc
+Base44: 3FV.2BWT9L7S.OBAZ4G (length: 19)
+UUID:   0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx
+Bytes:  0xxxxxxxxxxxxxxx41c2aexxxxxxxxxxxxxx
 
-# Encode an existing UUID (must have '41c2ae' signature and first char 0-7)
+# Encode an existing custom UUID (must have '41c2ae' signature and first char 0-7)
 $ qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f
-Base44: 2OLHMVYLDMPNRBLK50W5
+Base44: 3856ECXC*$A2D-ASF2- (length: 19)
 UUID:   454f7792-6670-41c2-ae4d-4a05f3000f3f
 
-# Decode Base44 back to UUID
-$ qr-url decode 2OLHMVYLDMPNRBLK50W5
+# Decode Base44 back to custom UUID
+$ qr-url decode 3856ECXC*$A2D-ASF2-
 UUID:   454f7792-6670-41c2-ae4d-4a05f3000f3f
 Bytes:  454f7792667041c2ae4d4a05f3000f3f
 ```
@@ -147,27 +150,29 @@ A live demo is automatically published to GitHub Pages:
 
 ## Encoding Implementation
 
-This project uses **custom optimal bit-level encoding** for Base44 (not the `qr-base44` crate):
+This project uses the [qr-base44](https://github.com/kookyleo/qr-base44) library for optimal bit-level encoding:
 
 - **Method**: Treats 103 bits as a single `u128` integer and converts directly to Base44
 - **Efficiency**: Achieves theoretical minimum of 19 characters (vs 20 with byte-pair encoding)
-- **Performance**: Fast and zero-dependency (no external Base44 library needed)
+- **Performance**: Fast u128 path with zero dependencies (≤128 bits)
 
-The encoding functions are self-contained in `src/lib.rs` (~60 lines):
-- `encode_base44_optimal(bytes: &[u8; 13]) -> String`
-- `decode_base44_optimal(s: &str) -> Result<[u8; 13], Uuid45Error>`
+The encoding is done through thin wrapper functions in `src/lib.rs`:
+- `encode_base44_optimal(bytes: &[u8; 13]) -> String` - calls `qr_base44::encode_bits(103, bytes)`
+- `decode_base44_optimal(s: &str) -> Result<[u8; 13], Uuid45Error>` - calls `qr_base44::decode_bits(103, s)`
 
 ## Why 103 bits?
 
-UUID v4 reserves:
-- 1 bit for first bit (always 0)
-- 4 bits for version (0100 = 4)
+Our custom UUID variant reserves:
+- 1 bit for first bit (always 0, ensures first hex char is 0-7)
+- 4 bits for version (0100 = 4, for RFC4122 compatibility)
 - 2 bits for variant (10 = RFC4122)
-- 18 bits for our signature "41c2ae" (excluding the version/variant bits already counted)
+- 18 bits for our application signature "41c2ae" (excluding the version/variant bits already counted)
 
 Total fixed bits: 1 + 4 + 2 + 18 = 25 bits
 
-Removing them yields 128 - 25 = 103 bits of entropy. We pack these into 13 bytes (last byte uses 7 bits). Using optimal Base44 bit-level encoding, this produces exactly 19 characters (theoretical minimum: `ceil(103 * log(2) / log(44)) = 19`).
+Removing them yields 128 - 25 = 103 bits of actual entropy. We pack these into 13 bytes (last byte uses 7 bits). Using optimal Base44 bit-level encoding, this produces exactly 19 characters (theoretical minimum: `ceil(103 * log(2) / log(44)) = 19`).
+
+**Note**: While this maintains RFC4122 structure, the fixed signature `41c2ae` makes it a **custom variant**, not a standard UUID v4.
 
 ## License
 

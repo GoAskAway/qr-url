@@ -1,7 +1,11 @@
-//! qr-url: Compact Base44 codec for UUID v4 by stripping 25 fixed bits.
-//! - 128-bit UUID v4 -> remove version(4b) + variant(2b) + signature "41c2ae"(18b) + first bit(1b) => 103 bits, pack to 13 bytes => Base44
-//! - First bit (bit 0 of byte 0) is always 0, removed during encoding
-//! - Reverse to reconstruct a canonical UUID v4 with signature "0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx"
+//! qr-url: Compact Base44 codec for custom UUID variant by stripping 25 fixed bits.
+//!
+//! **IMPORTANT**: This library works with a **custom UUID variant**, not standard RFC4122 UUID v4.
+//! The custom variant has a fixed signature "41c2ae" at specific positions for domain identification.
+//!
+//! - 128-bit custom UUID -> remove version(4b) + variant(2b) + signature "41c2ae"(18b) + first bit(1b) => 103 bits, pack to 13 bytes => Base44
+//! - First bit (bit 0 of byte 0) is always 0, removed during encoding (ensures first hex char is 0-7)
+//! - Reverse to reconstruct the custom UUID with signature "0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx"
 //! - Optimized for QR code alphanumeric mode and URL embedding (Base44 = Base45 without space character)
 //!   Provides: library API, WASM bindings (target wasm32), and CLI tool.
 
@@ -16,7 +20,7 @@ pub enum Uuid45Error {
     InvalidBase44(String),
     #[error("Invalid length: expected {expected} got {actual}")]
     InvalidLength { expected: usize, actual: usize },
-    #[error("UUID does not have required signature '41c2ae' at positions 13-18")]
+    #[error("UUID does not have required signature '41c2ae' (not a valid custom UUID variant)")]
     InvalidSignature,
 }
 
@@ -175,22 +179,24 @@ pub fn compact_bytes_to_uuid(compact: &[u8]) -> Result<[u8; 16], Uuid45Error> {
     Ok(out)
 }
 
-/// Encode a UUID into Base44 compact string (19 characters).
-/// Returns error if UUID does not have the required signature '41c2ae'.
+/// Encode a custom UUID into Base44 compact string (19 characters).
+/// Returns error if UUID does not have the required signature '41c2ae' and first bit = 0.
+/// **Note**: Only works with custom UUID variant, not standard UUID v4.
 pub fn encode_uuid(uuid: Uuid) -> Result<String, Uuid45Error> {
     let bytes = uuid.into_bytes();
     let compact = uuid_to_compact_bytes(&bytes)?;
     Ok(encode_base44_optimal(&compact))
 }
 
-/// Try to encode a UUID string into Base44 compact string.
+/// Try to encode a custom UUID string into Base44 compact string.
+/// Returns error if UUID does not have the required signature '41c2ae'.
 pub fn encode_uuid_str(s: &str) -> Result<String, Uuid45Error> {
     let uuid = Uuid::parse_str(s).map_err(|e| Uuid45Error::InvalidUuid(e.to_string()))?;
     encode_uuid(uuid)
 }
 
-/// Encode raw 16-byte UUID into Base44 compact string (19 characters).
-/// Returns error if UUID does not have the required signature '41c2ae'.
+/// Encode raw 16-byte custom UUID into Base44 compact string (19 characters).
+/// Returns error if UUID does not have the required signature '41c2ae' and first bit = 0.
 pub fn encode_uuid_bytes(bytes: &[u8; 16]) -> Result<String, Uuid45Error> {
     let compact = uuid_to_compact_bytes(bytes)?;
     Ok(encode_base44_optimal(&compact))
@@ -214,8 +220,9 @@ pub fn decode_to_string(s: &str) -> Result<String, Uuid45Error> {
     Ok(decode_to_uuid(s)?.hyphenated().to_string())
 }
 
-/// Generate a random UUID v4 with fixed bits at positions 13-18 (hex): 41c2ae and first bit 0
-/// This maintains UUID v4 compatibility while adding a recognizable signature.
+/// Generate a random custom UUID variant with fixed signature "41c2ae" and first bit 0.
+/// **This is NOT a standard UUID v4** - it's a custom variant with a fixed signature for domain identification.
+/// The UUID maintains RFC4122 structure but has deterministic bits at specific positions.
 /// Format: 0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx (first hex char is 0-7)
 pub fn generate_v4() -> Uuid {
     let uuid = Uuid::new_v4();

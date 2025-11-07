@@ -4,7 +4,22 @@ use uuid::Uuid;
 
 fn print_usage() {
     eprintln!(
-        "qr-url CLI\n\nCommands:\n  gen                       Generate a random UUID v4 with signature '41c2ae' and print Base44 and UUID\n  encode <UUID|HEX|@->     Encode a UUID into Base44 (requires '41c2ae' signature). Accepts:\n                           - canonical UUID string (xxxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx)\n                           - 32-hex (no dashes)\n                           - raw 16-byte hex prefixed with 0x? use stdin with @- to read 16 bytes\n  decode <BASE44|@->       Decode Base44 string back to UUID string and bytes (hex)\n\nOptions:\n  -q, --quiet              Only print the primary output\n  -h, --help               Show this help\n\nExamples:\n  qr-url gen\n  qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f\n  qr-url decode 2OLHMVYLDMPNRBLK50W5\n"
+        "qr-url CLI - Custom UUID variant encoder\n\n\
+        IMPORTANT: This tool works with custom UUID variants (signature '41c2ae'), NOT standard UUID v4.\n\n\
+        Commands:\n  \
+        gen                       Generate a random custom UUID with signature '41c2ae' (19-char Base44)\n  \
+        encode <UUID|HEX|@->     Encode a custom UUID into Base44 (requires '41c2ae' signature). Accepts:\n                           \
+        - canonical UUID string (0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx, first char 0-7)\n                           \
+        - 32-hex (no dashes)\n                           \
+        - raw 16-byte via stdin with @-\n  \
+        decode <BASE44|@->       Decode Base44 string back to custom UUID (19 chars)\n\n\
+        Options:\n  \
+        -q, --quiet              Only print the primary output\n  \
+        -h, --help               Show this help\n\n\
+        Examples:\n  \
+        qr-url gen\n  \
+        qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f\n  \
+        qr-url decode 3856ECXC*$A2D-ASF2-\n"
     );
 }
 

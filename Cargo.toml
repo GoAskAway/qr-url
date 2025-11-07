@@ -3,7 +3,7 @@ name = "qr-url"
 version = "0.2.0"
 edition = "2024"
 authors = ["kookyleo <kookyleo@gmail.com>"]
-description = "Encode UUID v4 into compact QR-friendly URLs using Base44 (removes 25 fixed bits including signature, alphanumeric mode optimized, 19 characters)"
+description = "Encode custom UUID variant with signature '41c2ae' into compact QR-friendly URLs using Base44 (removes 25 fixed bits, 19 characters, not standard UUID v4)"
 license = "Apache-2.0"
 repository = "https://github.com/GoAskAway/qr-url"
 
