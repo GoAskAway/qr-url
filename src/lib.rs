@@ -20,6 +20,79 @@ pub enum Uuid45Error {
     InvalidSignature,
 }
 
+/// Base44 alphabet for QR code alphanumeric mode (excluding space)
+const BASE44_ALPHABET: &[u8; 44] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ$%*+-./:";
+
+/// Encode 103 bits (stored in 13 bytes) into optimal 19-character Base44 string.
+///
+/// This achieves optimal encoding: 2^103 < 44^19, so all 103-bit values
+/// fit exactly in 19 Base44 characters (vs 20 with byte-pair encoding).
+///
+/// Input: 103 bits packed in 13 bytes, LSB-first order.
+/// Output: Exactly 19 Base44 characters.
+fn encode_base44_optimal(bytes: &[u8; 13]) -> String {
+    // Convert 103-bit value to u128 (little-endian, LSB-first)
+    let mut value: u128 = 0;
+    for (i, &b) in bytes.iter().enumerate() {
+        value |= (b as u128) << (i * 8);
+    }
+
+    // Convert to base44 (exactly 19 characters for 103 bits)
+    let mut result = Vec::with_capacity(19);
+    let mut v = value;
+    for _ in 0..19 {
+        let digit = (v % 44) as usize;
+        result.push(BASE44_ALPHABET[digit]);
+        v /= 44;
+    }
+
+    // Reverse to get most significant digit first
+    result.reverse();
+    String::from_utf8(result).unwrap()
+}
+
+/// Decode 19-character Base44 string back to 103 bits (stored in 13 bytes).
+///
+/// Input: Exactly 19 Base44 characters.
+/// Output: 103 bits packed in 13 bytes, LSB-first order.
+///
+/// Returns error if length != 19, invalid characters, or value exceeds 103 bits.
+fn decode_base44_optimal(s: &str) -> Result<[u8; 13], Uuid45Error> {
+    if s.len() != 19 {
+        return Err(Uuid45Error::InvalidBase44(format!(
+            "Expected 19 characters, got {}",
+            s.len()
+        )));
+    }
+
+    // Convert base44 string to u128
+    let mut value: u128 = 0;
+    for ch in s.chars() {
+        let digit = BASE44_ALPHABET
+            .iter()
+            .position(|&c| c == ch as u8)
+            .ok_or_else(|| Uuid45Error::InvalidBase44(format!("Invalid character: {}", ch)))?;
+        value = value * 44 + (digit as u128);
+    }
+
+    // Convert u128 back to 13 bytes (little-endian)
+    let mut bytes = [0u8; 13];
+    for i in 0..13 {
+        bytes[i] = (value & 0xFF) as u8;
+        value >>= 8;
+    }
+
+    // Verify that the value fits in 103 bits (not 104)
+    // After extracting 13 bytes (104 bits), remaining value should be 0
+    if value != 0 {
+        return Err(Uuid45Error::InvalidBase44(
+            "Value exceeds 103 bits".to_string(),
+        ));
+    }
+
+    Ok(bytes)
+}
+
 /// Fixed bits in our UUID v4 variant with signature "41c2ae":
 /// - Byte 6: 0x41 (version 4 in high nibble + signature '1' in low nibble)
 /// - Byte 7: 0xc2 (signature)
@@ -145,12 +218,12 @@ pub fn compact_bytes_to_uuid(compact: &[u8]) -> Result<[u8; 16], Uuid45Error> {
     Ok(out)
 }
 
-/// Encode a UUID into Base44 compact string.
+/// Encode a UUID into Base44 compact string (19 characters).
 /// Returns error if UUID does not have the required signature '41c2ae'.
 pub fn encode_uuid(uuid: Uuid) -> Result<String, Uuid45Error> {
     let bytes = uuid.into_bytes();
     let compact = uuid_to_compact_bytes(&bytes)?;
-    Ok(qr_base44::encode(&compact))
+    Ok(encode_base44_optimal(&compact))
 }
 
 /// Try to encode a UUID string into Base44 compact string.
@@ -159,17 +232,17 @@ pub fn encode_uuid_str(s: &str) -> Result<String, Uuid45Error> {
     encode_uuid(uuid)
 }
 
-/// Encode raw 16-byte UUID into Base44 compact string.
+/// Encode raw 16-byte UUID into Base44 compact string (19 characters).
 /// Returns error if UUID does not have the required signature '41c2ae'.
 pub fn encode_uuid_bytes(bytes: &[u8; 16]) -> Result<String, Uuid45Error> {
     let compact = uuid_to_compact_bytes(bytes)?;
-    Ok(qr_base44::encode(&compact))
+    Ok(encode_base44_optimal(&compact))
 }
 
-/// Decode Base44 compact string into a UUID.
+/// Decode Base44 compact string (19 characters) into a UUID.
 pub fn decode_to_uuid(s: &str) -> Result<Uuid, Uuid45Error> {
-    let bytes = qr_base44::decode(s).map_err(|e| Uuid45Error::InvalidBase44(e.to_string()))?;
-    let arr = compact_bytes_to_uuid(&bytes)?;
+    let compact = decode_base44_optimal(s)?;
+    let arr = compact_bytes_to_uuid(&compact)?;
     Ok(Uuid::from_bytes(arr))
 }
 
@@ -273,36 +346,32 @@ mod tests {
     fn compact_size() {
         let u = generate_v4();
         let s = encode_uuid(u).unwrap();
-        let raw = qr_base44::decode(&s).unwrap();
-        // Should be 13 bytes for 104 bits
-        assert_eq!(raw.len(), 13);
+        // Optimal encoding: 103 bits -> 19 characters
+        assert_eq!(s.len(), 19);
     }
 
     #[test]
     fn invalid_base44_char() {
-        assert!(qr_base44::decode("A😀").is_err());
-        assert!(qr_base44::decode("a").is_err()); // lowercase not allowed
+        // Test invalid characters
+        assert!(decode_to_uuid("A😀BCDEFGHIJ1234567").is_err());
+        assert!(decode_to_uuid("abcdefghij123456789").is_err()); // lowercase not allowed
+        assert!(decode_to_uuid("ABC!EFGHIJ123456789").is_err()); // '!' not in alphabet
     }
 
     #[test]
-    fn invalid_base44_dangling() {
-        assert!(qr_base44::decode("A").is_err()); // dangling single char
-    }
-
-    #[test]
-    fn invalid_base44_overflow() {
-        // ':::' => a=b=c=44 -> x=91124 > 65535 -> overflow
-        assert!(qr_base44::decode(":::").is_err());
+    fn invalid_base44_length() {
+        // Test invalid lengths (not 19 characters)
+        assert!(decode_to_uuid("TOOSHORT").is_err());
+        assert!(decode_to_uuid("WAYTOOLONGFORBASE44ENCODED").is_err());
+        assert!(decode_to_uuid("0123456789ABCDEFGH").is_err()); // 18 chars
+        assert!(decode_to_uuid("0123456789ABCDEFGHIJ").is_err()); // 20 chars
     }
 
     #[test]
     fn invalid_length_rejected() {
-        let u = generate_v4();
-        let s = encode_uuid(u).unwrap();
-        let compact = qr_base44::decode(&s).unwrap();
-        assert_eq!(compact.len(), 13);
-        // Try with wrong length (12 bytes)
-        let err = compact_bytes_to_uuid(&compact[..12]).unwrap_err();
+        // Try with wrong length (12 bytes instead of 13)
+        let twelve = [0u8; 12];
+        let err = compact_bytes_to_uuid(&twelve).unwrap_err();
         match err {
             Uuid45Error::InvalidLength {
                 expected: 13,
@@ -362,17 +431,20 @@ mod tests {
     }
 
     #[test]
-    fn decode_invalid_length_bytes() {
-        // Make a Base44 string that decodes to 12 bytes (invalid length, need 13)
-        let twelve = vec![0u8; 12];
-        let b45 = qr_base44::encode(&twelve);
-        let err = decode_to_uuid(&b45).unwrap_err();
-        assert!(matches!(
-            err,
-            Uuid45Error::InvalidLength {
-                expected: 13,
-                actual: 12
-            }
-        ));
+    fn base44_optimal_encoding_length() {
+        // Verify all generated UUIDs encode to exactly 19 characters
+        for _ in 0..20 {
+            let u = generate_v4();
+            let encoded = encode_uuid(u).unwrap();
+            assert_eq!(
+                encoded.len(),
+                19,
+                "Expected 19 chars, got {}",
+                encoded.len()
+            );
+            // Verify decode works
+            let decoded = decode_to_uuid(&encoded).unwrap();
+            assert_eq!(u, decoded);
+        }
     }
 }

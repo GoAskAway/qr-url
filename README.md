@@ -12,8 +12,8 @@ This library implements a compact encoding scheme for UUID v4 identifiers with a
 
 - **Input**: UUID v4 with signature `0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx` (128 bits, first hex char is 0-7)
 - **Optimization**: Remove 25 deterministic bits (1-bit first + 4-bit version + 2-bit variant + 18-bit signature) → 103 bits of entropy
-- **Encoding**: Base44 (QR alphanumeric alphabet excluding space)
-- **Output**: Compact URL-safe string (typically 20 characters)
+- **Encoding**: Optimal Base44 using big-integer encoding (103 bits → 19 chars)
+- **Output**: Compact URL-safe string (**exactly 19 characters**)
 
 ### Why Base44 instead of Base45?
 
@@ -131,17 +131,24 @@ A live demo is automatically published to GitHub Pages:
 - Compact size validation (13 bytes for 103 bits)
 - Version and variant preservation
 
-## Why 103 bits?
+## Why 103 bits → 19 chars?
 
-UUID v4 reserves:
-- 1 bit for first bit (always 0)
-- 4 bits for version (0100 = 4)
-- 2 bits for variant (10 = RFC4122)
-- 18 bits for our signature "41c2ae" (excluding the version/variant bits already counted)
+**Fixed bits in UUID v4:**
+- 1 bit: first bit (always 0)
+- 4 bits: version (0100 = 4)
+- 2 bits: variant (10 = RFC4122)
+- 18 bits: our signature "41c2ae"
 
-Total fixed bits: 1 + 4 + 2 + 18 = 25 bits
+Total fixed: 1 + 4 + 2 + 18 = **25 bits**
 
-Removing them yields 128 - 25 = 103 bits of entropy. We pack these into 13 bytes (last byte uses 7 bits). Base44 then encodes these bytes into approximately 20 characters.
+**Entropy after optimization:**
+- 128 - 25 = **103 bits of entropy**
+- Storage: 13 bytes (103 bits + 1 padding bit)
+
+**Optimal Base44 encoding:**
+- Mathematical bound: 2¹⁰³ < 44¹⁹ (all 103-bit values fit in 19 Base44 chars)
+- Algorithm: Big-integer encoding (treat 103 bits as single u128 value)
+- Result: **Exactly 19 characters** (vs 20 with byte-pair encoding)
 
 ## License
 

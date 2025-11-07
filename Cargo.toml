@@ -3,7 +3,7 @@ name = "qr-url"
 version = "0.2.0"
 edition = "2024"
 authors = ["kookyleo <kookyleo@gmail.com>"]
-description = "Encode UUID v4 into compact QR-friendly URLs using Base44 (removes 24 fixed bits including signature, alphanumeric mode optimized, no space character)"
+description = "Encode UUID v4 into compact QR-friendly URLs using Base44 (103 bits → 19 chars, optimal encoding, alphanumeric mode)"
 license = "Apache-2.0"
 repository = "https://github.com/GoAskAway/qr-url"
 
@@ -18,7 +18,6 @@ default = []
 uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
 thiserror = "2"
 hex = "0.4"
-qr-base44 = "0.1"
 
 # WASM
 wasm-bindgen = { version = "0.2" }
