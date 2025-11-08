@@ -3,9 +3,9 @@
 This example demonstrates using the qr-url WASM bindings in a simple HTML page.
 
 What it shows:
-- Generate UUID v4 in the browser (via wasm)
-- Encode UUID to compact Base44 string
-- Decode Base44 back to UUID string
+- Generate custom UUID variant (signature '41c2ae') in the browser (via wasm)
+- Encode custom UUID to compact Base44 string (19 chars)
+- Decode Base44 back to custom UUID string
 - Generate QR codes optimized for alphanumeric mode
 
 ## Prerequisites
