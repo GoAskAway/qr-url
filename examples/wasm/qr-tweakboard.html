@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Tweak Board</title>
+    <style>
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: center;
+        }
+        .qr-container {
+            position: relative;
+            background: white;
+            padding: 25px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: fit-content;
+        }
+        
+        .qr-container h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .grid-wrapper {
+            position: relative;
+            display: flex;
+            gap: 5px;
+        }
+        .coord-labels-y {
+            display: flex;
+            flex-direction: column;
+            padding-top: 21px;
+        }
+        .coord-label-y {
+            width: 25px;
+            height: 21px;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        }
+        .grid-and-x {
+            display: flex;
+            flex-direction: column;
+        }
+        .coord-labels-x {
+            display: flex;
+            margin-bottom: 2px;
+        }
+        .coord-label-x {
+            width: 21px;
+            text-align: center;
+            flex-shrink: 0;
+            font-size: 11px;
+            color: #666;
+            font-weight: 500;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(29, 20px);
+            grid-template-rows: repeat(29, 20px);
+            gap: 1px;
+            background-color: #ddd;
+            padding: 1px;
+            position: relative;
+            width: fit-content;
+        }
+        .cell {
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border: 0.5px solid #f0f0f0;
+            position: relative;
+        }
+        
+        /* Function patterns - grayscale */
+        .finder-pattern { background-color: #000000 !important; border-color: #000000 !important; }
+        .separator { background-color: #ffffff !important; border-color: #e0e0e0 !important; }
+        .alignment-pattern { background-color: #333333 !important; border-color: #333333 !important; }
+        .timing-pattern { background-color: #666666 !important; border-color: #666666 !important; }
+        .format-info { background-color: #999999 !important; border-color: #999999 !important; }
+        .dark-module { background-color: #000000 !important; border-color: #000000 !important; }
+        
+        
+        /* Redundancy indicator */
+        .redundancy-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 16px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            border-left: 4px solid #4caf50;
+            transition: border-color 0.3s, background-color 0.3s;
+        }
+        
+        .redundancy-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .redundancy-value {
+            font-size: 20px;
+            font-weight: bold;
+            transition: color 0.3s;
+        }
+        
+        .redundancy-status {
+            font-size: 12px;
+            padding: 4px 8px;
+            border-radius: 3px;
+            background: #f44336;
+            color: white;
+            font-weight: 500;
+        }
+        
+        .redundancy-status:empty {
+            display: none;
+        }
+        
+        
+        /* Configuration panel */
+        .config-panel {
+            background: white;
+            padding: 22px 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 340px;
+        }
+        
+        .config-panel h3 {
+            margin-top: 0;
+            margin-bottom: 18px;
+            color: #1976d2;
+            border-bottom: 2px solid #e3f2fd;
+            padding-bottom: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        
+        .config-row {
+            margin-bottom: 16px;
+        }
+        
+        .config-row label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #555;
+        }
+        
+        .config-row select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 13px;
+            background: white;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        
+        .config-row select:hover {
+            border-color: #2196f3;
+        }
+        
+        .config-row select:focus {
+            outline: none;
+            border-color: #2196f3;
+            box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.1);
+        }
+        
+
+        .apply-button {
+            width: 100%;
+            padding: 10px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .apply-button:hover {
+            background: #1976d2;
+        }
+        
+        .apply-button:active {
+            background: #1565c0;
+        }
+        
+        .apply-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        /* Two-column layout */
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            flex-shrink: 0;
+        }
+        
+        .alignment-center {
+            background-color: #ffffff !important;
+            border-color: #ffffff !important;
+            z-index: 100;
+            position: relative;
+        }
+        /* QR center mark - white dot */
+        .center-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: #ffffff;
+            border: 2px solid #333333;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 0 4px rgba(0,0,0,0.3);
+        }
+        
+        /* Circular mask */
+        .circular-mask {
+            position: absolute;
+            border: 0.5px solid #666666;
+            background-color: rgba(128, 128, 128, 0.15);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 999;
+            box-shadow: 0 0 8px rgba(0,0,0,0.2);
+            display: none;
+        }
+        
+        
+        /* Second circular mask - draggable */
+        .circular-mask-2 {
+            position: absolute;
+            border: 0.5px solid #666666;
+            background-color: rgba(128, 128, 128, 0.15);
+            border-radius: 50%;
+            z-index: 998;
+            box-shadow: 0 0 8px rgba(0,0,0,0.2);
+            display: none;
+            cursor: move;
+        }
+        
+        .circular-mask-2.active {
+            display: block;
+        }
+        
+        .circular-mask-2:hover {
+            background-color: rgba(128, 128, 128, 0.25);
+            border-color: #444444;
+        }
+        
+        .circular-mask-2.dragging {
+            cursor: grabbing;
+            z-index: 1001;
+        }
+        .circular-mask.active {
+            display: block;
+        }
+        
+        /* Masked codeword */
+        .codeword-masked {
+            background-color: #ffffff !important;
+            border-color: #e0e0e0 !important;
+        }
+        
+        
+        /* Mask control panel */
+        .mask-control-panel {
+            background: white;
+            padding: 22px 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: 340px;
+        }
+        
+        .mask-control-panel h3 {
+            margin-top: 0;
+            margin-bottom: 18px;
+            color: #1976d2;
+            border-bottom: 2px solid #e3f2fd;
+            padding-bottom: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        
+        .mask-toggle {
+            margin-bottom: 15px;
+        }
+        
+        .mask-toggle label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        .mask-toggle input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            cursor: pointer;
+        }
+        
+        .mask-slider {
+            margin-bottom: 15px;
+        }
+        
+        .mask-slider label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #555;
+        }
+        
+        
+        .mask-slider input[type="range"]:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+        
+        .mask-slider input[type="range"]:disabled::-webkit-slider-thumb {
+            cursor: not-allowed;
+            background: #999;
+        }
+        
+        .mask-slider input[type="range"]:disabled::-moz-range-thumb {
+            cursor: not-allowed;
+            background: #999;
+        }
+        .mask-slider input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: #ddd;
+            outline: none;
+            cursor: pointer;
+        }
+        
+        .mask-slider input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #2196f3;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .mask-slider input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: #2196f3;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .slider-value {
+            font-weight: bold;
+            color: #2196f3;
+            font-size: 14px;
+        }
+        
+        .mask-info {
+            padding: 10px;
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+            border-radius: 3px;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+
+.codeword-label {
+            position: absolute;
+            font-size: 7px;
+            color: #fff;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 1px 2px;
+            border-radius: 2px;
+            z-index: 5;
+            pointer-events: none;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            text-shadow: 0 0 3px rgba(0,0,0,0.9);
+        }
+        
+        .hidden-pattern { opacity: 0 !important; }
+        
+        .legend {
+            background: white;
+            padding: 22px 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        .legend h3 {
+            margin-top: 0;
+            margin-bottom: 18px;
+            color: #1976d2;
+            border-bottom: 2px solid #e3f2fd;
+            padding-bottom: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .legend-section {
+            margin: 15px 0;
+            padding: 12px;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+        .legend-section h4 {
+            margin: 0 0 10px 0;
+            font-size: 13px;
+            color: #555;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        .legend-item input[type="checkbox"] {
+            margin-right: 10px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        .legend-item label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            flex: 1;
+            font-size: 12px;
+        }
+        .legend-sample {
+            width: 28px;
+            height: 18px;
+            margin-right: 8px;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+        }
+
+
+
+
+        
+        /* Responsive layout */
+        @media (max-width: 1200px) {
+            .container {
+                max-width: 100%;
+                padding: 20px;
+            }
+            
+            .mask-control-panel, .config-panel {
+                width: 100%;
+                max-width: 500px;
+            }
+        }
+        
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .left-column, .right-column {
+                width: 100%;
+                max-width: 100%;
+            }
+            
+            .qr-container {
+                width: 100%;
+                overflow-x: auto;
+            }
+            
+            .grid-wrapper {
+                justify-content: center;
+            }
+            
+            .mask-control-panel, .config-panel {
+                width: 100%;
+            }
+            
+            .legend {
+                width: 100%;
+            }
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            
+            .qr-container, .mask-control-panel, .config-panel, .legend {
+                padding: 15px;
+                border-radius: 8px;
+            }
+            
+            .qr-container h2 {
+                font-size: 16px;
+            }
+            
+            .mask-control-panel h3, .config-panel h3, .legend h3 {
+                font-size: 14px;
+            }
+            
+            .grid {
+                transform: scale(0.8);
+                transform-origin: top left;
+            }
+            
+            .redundancy-indicator {
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+            
+            .redundancy-value {
+                font-size: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-column">
+            <div class="qr-container">
+                <h2>QR Tweak Board</h2>
+                <div class="redundancy-indicator">
+                    <span class="redundancy-label">Remaining Loss Capacity:</span>
+                    <span class="redundancy-value" id="redundancy-value">21/21</span>
+                    <span class="redundancy-status" id="redundancy-status"></span>
+                </div>
+                <div class="grid-wrapper">
+                    <div class="coord-labels-y" id="coord-y"></div>
+                    <div class="grid-and-x">
+                        <div class="coord-labels-x" id="coord-x"></div>
+                        <div class="grid" id="qr-grid"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="legend">
+                <h3>Legend</h3>
+                
+                <div class="legend-section">
+                    <h4>Function Patterns (Grayscale)</h4>
+                    <div class="legend-item">
+                        <input type="checkbox" id="toggle-finder" checked>
+                        <label for="toggle-finder">
+                            <div class="legend-sample" style="background:#000;"></div>
+                            <span>Finder Patterns</span>
+                        </label>
+                    </div>
+                    <div class="legend-item">
+                        <input type="checkbox" id="toggle-timing" checked>
+                        <label for="toggle-timing">
+                            <div class="legend-sample" style="background:#666;"></div>
+                            <span>Timing/Alignment</span>
+                        </label>
+                    </div>
+                    <div class="legend-item">
+                        <input type="checkbox" id="toggle-format" checked>
+                        <label for="toggle-format">
+                            <div class="legend-sample" style="background:#999;"></div>
+                            <span>Format Info</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="legend-section">
+                    <h4>Data Region (Smart 4-Color)</h4>
+                    <div class="legend-item">
+                        <input type="checkbox" id="toggle-codewords" checked>
+                        <label for="toggle-codewords">
+                            <span>Show Codeword Colors</span>
+                        </label>
+                    </div>
+                    <div class="legend-item">
+                        <input type="checkbox" id="toggle-codeword-labels" checked>
+                        <label for="toggle-codeword-labels">
+                            <span>Show Codeword Labels</span>
+                        </label>
+                    </div>
+
+                </div>
+
+
+            </div>
+        </div>
+        
+        <div class="right-column">
+            <div class="config-panel">
+                <h3>QR Code Configuration</h3>
+                <div class="config-row">
+                    <label for="qr-version">Version:</label>
+                    <select id="qr-version">
+                        <option value="1">V1 (21×21)</option>
+                        <option value="2">V2 (25×25)</option>
+                        <option value="3" selected>V3 (29×29)</option>
+                        <option value="4">V4 (33×33)</option>
+                        <option value="5">V5 (37×37)</option>
+                    </select>
+                </div>
+                <div class="config-row">
+                    <label for="error-level">Error Correction:</label>
+                    <select id="error-level">
+                        <option value="L">L-Level (~7%)</option>
+                        <option value="M">M-Level (~15%)</option>
+                        <option value="Q">Q-Level (~25%)</option>
+                        <option value="H" selected>H-Level (~30%)</option>
+                    </select>
+                </div>
+
+                <button id="apply-config" class="apply-button">Apply Configuration</button>
+            </div>
+            
+            <div class="mask-control-panel">
+                <h3>Center Circle Mask</h3>
+                <div class="mask-toggle">
+                    <label>
+                        <input type="checkbox" id="toggle-mask">
+                        <span>Enable Mask</span>
+                    </label>
+                </div>
+                <div class="mask-slider">
+                    <label>
+                        Radius: <span class="slider-value" id="radius-value">0.0</span> modules
+                    </label>
+                    <input type="range" id="radius-slider" min="0" max="15" value="0" step="0.1">
+                </div>
+                <div class="mask-info">
+                    Center: <span id="center-pos">(14, 14)</span><br>
+                    Masked: <span id="masked-count">0</span> codewords
+                </div>
+            </div>
+            
+            <div class="mask-control-panel">
+                <h3>Corner Circle Mask (Draggable)</h3>
+                <div class="mask-toggle">
+                    <label>
+                        <input type="checkbox" id="toggle-mask-2">
+                        <span>Enable Mask</span>
+                    </label>
+                </div>
+                <div class="mask-slider">
+                    <label>
+                        Radius: <span class="slider-value" id="radius-value-2">0.0</span> modules
+                    </label>
+                    <input type="range" id="radius-slider-2" min="0" max="15" value="2.0" step="0.1">
+                </div>
+                <div class="mask-info">
+                    Center: <span id="circle2-pos">(14, 14)</span><br>
+                    Drag to move<br>
+                    Masked: <span id="masked-count-2">0</span> codewords
+                </div>
+            </div>
+        </div>
+    </div>
+    
+<script>
+        const SIZE = 29;
+        // Current QR size (updated when version changes)
+        let currentSize = SIZE;
+        // Default (V3-H) codeword configuration for initial display
+        const TOTAL_DATA_CODEWORDS = 26;
+        const TOTAL_ERROR_CODEWORDS = 44;
+        const TOTAL_CODEWORDS = 70;  // TOTAL_DATA_CODEWORDS + TOTAL_ERROR_CODEWORDS
+        const DATA_CODEWORDS = TOTAL_DATA_CODEWORDS;  // alias
+        const ERROR_CORRECTION_CODEWORDS = TOTAL_ERROR_CODEWORDS;  // alias
+        
+        // Precomputed module order for V3 (initial view only)
+        const MODULE_ORDER = [
+          [28, 28],          [28, 27],          [27, 28],          [27, 27],          [26, 28],          [26, 27],          [25, 28],          [25, 27],  // codeword1
+          [24, 28],          [24, 27],          [23, 28],          [23, 27],          [22, 28],          [22, 27],          [21, 28],          [21, 27],  // codeword2
+          [20, 28],          [20, 27],          [19, 28],          [19, 27],          [18, 28],          [18, 27],          [17, 28],          [17, 27],  // codeword3
+          [16, 28],          [16, 27],          [15, 28],          [15, 27],          [14, 28],          [14, 27],          [13, 28],          [13, 27],  // codeword4
+          [12, 28],          [12, 27],          [11, 28],          [11, 27],          [10, 28],          [10, 27],          [9, 28],          [9, 27],  // codeword5
+          [9, 26],          [9, 25],          [10, 26],          [10, 25],          [11, 26],          [11, 25],          [12, 26],          [12, 25],  // codeword6
+          [13, 26],          [13, 25],          [14, 26],          [14, 25],          [15, 26],          [15, 25],          [16, 26],          [16, 25],  // codeword7
+          [17, 26],          [17, 25],          [18, 26],          [18, 25],          [19, 26],          [19, 25],          [20, 26],          [20, 25],  // codeword8
+          [21, 26],          [21, 25],          [22, 26],          [22, 25],          [23, 26],          [23, 25],          [24, 26],          [24, 25],  // codeword9
+          [25, 26],          [25, 25],          [26, 26],          [26, 25],          [27, 26],          [27, 25],          [28, 26],          [28, 25],  // codeword10
+          [28, 24],          [28, 23],          [27, 24],          [27, 23],          [26, 24],          [26, 23],          [25, 24],          [25, 23],  // codeword11
+          [19, 24],          [19, 23],          [18, 24],          [18, 23],          [17, 24],          [17, 23],          [16, 24],          [16, 23],  // codeword12
+          [15, 24],          [15, 23],          [14, 24],          [14, 23],          [13, 24],          [13, 23],          [12, 24],          [12, 23],  // codeword13
+          [11, 24],          [11, 23],          [10, 24],          [10, 23],          [9, 24],          [9, 23],          [9, 22],          [9, 21],  // codeword14
+          [10, 22],          [10, 21],          [11, 22],          [11, 21],          [12, 22],          [12, 21],          [13, 22],          [13, 21],  // codeword15
+          [14, 22],          [14, 21],          [15, 22],          [15, 21],          [16, 22],          [16, 21],          [17, 22],          [17, 21],  // codeword16
+          [18, 22],          [18, 21],          [19, 22],          [19, 21],          [25, 22],          [25, 21],          [26, 22],          [26, 21],  // codeword17
+          [27, 22],          [27, 21],          [28, 22],          [28, 21],          [28, 20],          [28, 19],          [27, 20],          [27, 19],  // codeword18
+          [26, 20],          [26, 19],          [25, 20],          [25, 19],          [24, 19],          [23, 19],          [22, 19],          [21, 19],  // codeword19
+          [20, 19],          [19, 20],          [19, 19],          [18, 20],          [18, 19],          [17, 20],          [17, 19],          [16, 20],  // codeword20
+          [16, 19],          [15, 20],          [15, 19],          [14, 20],          [14, 19],          [13, 20],          [13, 19],          [12, 20],  // codeword21
+          [12, 19],          [11, 20],          [11, 19],          [10, 20],          [10, 19],          [9, 20],          [9, 19],          [8, 20],  // codeword22
+          [8, 19],          [7, 20],          [7, 19],          [5, 20],          [5, 19],          [4, 20],          [4, 19],          [3, 20],  // codeword23
+          [3, 19],          [2, 20],          [2, 19],          [1, 20],          [1, 19],          [0, 20],          [0, 19],          [0, 18],  // codeword24
+          [0, 17],          [1, 18],          [1, 17],          [2, 18],          [2, 17],          [3, 18],          [3, 17],          [4, 18],  // codeword25
+          [4, 17],          [5, 18],          [5, 17],          [7, 18],          [7, 17],          [8, 18],          [8, 17],          [9, 18],  // codeword26
+          [9, 17],          [10, 18],          [10, 17],          [11, 18],          [11, 17],          [12, 18],          [12, 17],          [13, 18],  // codeword27
+          [13, 17],          [14, 18],          [14, 17],          [15, 18],          [15, 17],          [16, 18],          [16, 17],          [17, 18],  // codeword28
+          [17, 17],          [18, 18],          [18, 17],          [19, 18],          [19, 17],          [20, 18],          [20, 17],          [21, 18],  // codeword29
+          [21, 17],          [22, 18],          [22, 17],          [23, 18],          [23, 17],          [24, 18],          [24, 17],          [25, 18],  // codeword30
+          [25, 17],          [26, 18],          [26, 17],          [27, 18],          [27, 17],          [28, 18],          [28, 17],          [28, 16],  // codeword31
+          [28, 15],          [27, 16],          [27, 15],          [26, 16],          [26, 15],          [25, 16],          [25, 15],          [24, 16],  // codeword32
+          [24, 15],          [23, 16],          [23, 15],          [22, 16],          [22, 15],          [21, 16],          [21, 15],          [20, 16],  // codeword33
+          [20, 15],          [19, 16],          [19, 15],          [18, 16],          [18, 15],          [17, 16],          [17, 15],          [16, 16],  // codeword34
+          [16, 15],          [15, 16],          [15, 15],          [14, 16],          [14, 15],          [13, 16],          [13, 15],          [12, 16],  // codeword35
+          [12, 15],          [11, 16],          [11, 15],          [10, 16],          [10, 15],          [9, 16],          [9, 15],          [8, 16],  // codeword36
+          [8, 15],          [7, 16],          [7, 15],          [5, 16],          [5, 15],          [4, 16],          [4, 15],          [3, 16],  // codeword37
+          [3, 15],          [2, 16],          [2, 15],          [1, 16],          [1, 15],          [0, 16],          [0, 15],          [0, 14],  // codeword38
+          [0, 13],          [1, 14],          [1, 13],          [2, 14],          [2, 13],          [3, 14],          [3, 13],          [4, 14],  // codeword39
+          [4, 13],          [5, 14],          [5, 13],          [7, 14],          [7, 13],          [8, 14],          [8, 13],          [9, 14],  // codeword40
+          [9, 13],          [10, 14],          [10, 13],          [11, 14],          [11, 13],          [12, 14],          [12, 13],          [13, 14],  // codeword41
+          [13, 13],          [14, 14],          [14, 13],          [15, 14],          [15, 13],          [16, 14],          [16, 13],          [17, 14],  // codeword42
+          [17, 13],          [18, 14],          [18, 13],          [19, 14],          [19, 13],          [20, 14],          [20, 13],          [21, 14],  // codeword43
+          [21, 13],          [22, 14],          [22, 13],          [23, 14],          [23, 13],          [24, 14],          [24, 13],          [25, 14],  // codeword44
+          [25, 13],          [26, 14],          [26, 13],          [27, 14],          [27, 13],          [28, 14],          [28, 13],          [28, 12],  // codeword45
+          [28, 11],          [27, 12],          [27, 11],          [26, 12],          [26, 11],          [25, 12],          [25, 11],          [24, 12],  // codeword46
+          [24, 11],          [23, 12],          [23, 11],          [22, 12],          [22, 11],          [21, 12],          [21, 11],          [20, 12],  // codeword47
+          [20, 11],          [19, 12],          [19, 11],          [18, 12],          [18, 11],          [17, 12],          [17, 11],          [16, 12],  // codeword48
+          [16, 11],          [15, 12],          [15, 11],          [14, 12],          [14, 11],          [13, 12],          [13, 11],          [12, 12],  // codeword49
+          [12, 11],          [11, 12],          [11, 11],          [10, 12],          [10, 11],          [9, 12],          [9, 11],          [8, 12],  // codeword50
+          [8, 11],          [7, 12],          [7, 11],          [5, 12],          [5, 11],          [4, 12],          [4, 11],          [3, 12],  // codeword51
+          [3, 11],          [2, 12],          [2, 11],          [1, 12],          [1, 11],          [0, 12],          [0, 11],          [0, 10],  // codeword52
+          [0, 9],          [1, 10],          [1, 9],          [2, 10],          [2, 9],          [3, 10],          [3, 9],          [4, 10],  // codeword53
+          [4, 9],          [5, 10],          [5, 9],          [7, 10],          [7, 9],          [8, 10],          [8, 9],          [9, 10],  // codeword54
+          [9, 9],          [10, 10],          [10, 9],          [11, 10],          [11, 9],          [12, 10],          [12, 9],          [13, 10],  // codeword55
+          [13, 9],          [14, 10],          [14, 9],          [15, 10],          [15, 9],          [16, 10],          [16, 9],          [17, 10],  // codeword56
+          [17, 9],          [18, 10],          [18, 9],          [19, 10],          [19, 9],          [20, 10],          [20, 9],          [21, 10],  // codeword57
+          [21, 9],          [22, 10],          [22, 9],          [23, 10],          [23, 9],          [24, 10],          [24, 9],          [25, 10],  // codeword58
+          [25, 9],          [26, 10],          [26, 9],          [27, 10],          [27, 9],          [28, 10],          [28, 9],          [20, 8],  // codeword59
+          [20, 7],          [19, 8],          [19, 7],          [18, 8],          [18, 7],          [17, 8],          [17, 7],          [16, 8],  // codeword60
+          [16, 7],          [15, 8],          [15, 7],          [14, 8],          [14, 7],          [13, 8],          [13, 7],          [12, 8],  // codeword61
+          [12, 7],          [11, 8],          [11, 7],          [10, 8],          [10, 7],          [9, 8],          [9, 7],          [9, 5],  // codeword62
+          [9, 4],          [10, 5],          [10, 4],          [11, 5],          [11, 4],          [12, 5],          [12, 4],          [13, 5],  // codeword63
+          [13, 4],          [14, 5],          [14, 4],          [15, 5],          [15, 4],          [16, 5],          [16, 4],          [17, 5],  // codeword64
+          [17, 4],          [18, 5],          [18, 4],          [19, 5],          [19, 4],          [20, 5],          [20, 4],          [20, 3],  // codeword65
+          [20, 2],          [19, 3],          [19, 2],          [18, 3],          [18, 2],          [17, 3],          [17, 2],          [16, 3],  // codeword66
+          [16, 2],          [15, 3],          [15, 2],          [14, 3],          [14, 2],          [13, 3],          [13, 2],          [12, 3],  // codeword67
+          [12, 2],          [11, 3],          [11, 2],          [10, 3],          [10, 2],          [9, 3],          [9, 2],          [9, 1],  // codeword68
+          [9, 0],          [10, 1],          [10, 0],          [11, 1],          [11, 0],          [12, 1],          [12, 0],          [13, 1],  // codeword69
+          [13, 0],          [14, 1],          [14, 0],          [15, 1],          [15, 0],          [16, 1],          [16, 0],          [17, 1]  // codeword70
+
+        ];
+        
+        // Precomputed color assignment (generated by Python, used only for initial V3)
+        const COLOR_ASSIGNMENT = [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 2, 3, 0, 1, 0, 1, 2, 0, 2, 3, 2, 0, 1, 2, 1, 0, 1, 3, 1, 3, 0, 2, 0, 2, 3, 0, 1, 2, 1, 0, 1, 3, 1, 2, 0, 2, 0, 2, 3, 0, 1, 2, 1, 0, 1, 3, 1, 2, 0, 2, 1, 0, 1, 0, 2, 3, 1, 0, 1];
+        
+        // Four-color palette with high contrast (shared by all versions)
+        const FOUR_COLORS = [
+            '#FF6B6B',  // coral red
+            '#4ECDC4',  // teal
+            '#FFD93D',  // bright yellow
+            '#95E1D3'   // mint green
+        ];
+        
+        // Current mapping from codeword index to module coordinates:
+        // currentCodewordModules[cwIdx] = [[row, col], ...]
+        let currentCodewordModules = [];
+        
+        // Initialize default mapping and coloring for V3 based on MODULE_ORDER
+        (function initV3CodewordModules() {
+            currentCodewordModules = [];
+            for (let cwIdx = 0; cwIdx < TOTAL_CODEWORDS; cwIdx++) {
+                const startBit = cwIdx * 8;
+                const modules = [];
+                for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
+                    const moduleIdx = startBit + bitIdx;
+                    if (moduleIdx >= MODULE_ORDER.length) break;
+                    modules.push(MODULE_ORDER[moduleIdx]);
+                }
+                currentCodewordModules.push(modules);
+            }
+        })();
+        
+        const grid = document.getElementById('qr-grid');
+        
+        // Create coordinate labels
+        for (let i = 0; i < SIZE; i++) {
+            const labelX = document.createElement('div');
+            labelX.className = 'coord-label-x';
+            labelX.textContent = i;
+            document.getElementById('coord-x').appendChild(labelX);
+            
+            const labelY = document.createElement('div');
+            labelY.className = 'coord-label-y';
+            labelY.textContent = i;
+            document.getElementById('coord-y').appendChild(labelY);
+        }
+        
+        // Create initial grid
+        for (let i = 0; i < SIZE; i++) {
+            for (let j = 0; j < SIZE; j++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.id = `cell-${i}-${j}`;
+                grid.appendChild(cell);
+            }
+        }
+        
+        // Mark functional patterns
+        function mark(selector, ...cells) {
+            cells.forEach(([r, c]) => {
+                const cell = document.getElementById(`cell-${r}-${c}`);
+                if (cell) cell.classList.add(selector);
+            });
+        }
+        
+        // Finder patterns
+        for (let i = 0; i < 7; i++) {
+            for (let j = 0; j < 7; j++) {
+                mark('finder-pattern', [i, j], [i, 22+j], [22+i, j]);
+            }
+        }
+        
+        // Separators
+        for (let i = 0; i < 8; i++) {
+            mark('separator', [i, 7], [7, i], [i, 21], [7, 21+i], [21, i]);
+            if (i < 7) mark('separator', [22+i, 7]);
+        }
+        
+        // Timing patterns
+        for (let i = 8; i < 21; i++) {
+            mark('timing-pattern', [6, i], [i, 6]);
+        }
+        
+        // Alignment pattern
+        for (let i = -2; i <= 2; i++) {
+            for (let j = -2; j <= 2; j++) {
+                mark('alignment-pattern', [22+i, 22+j]);
+            }
+        }
+        
+        // Add white center mark at (14,14)
+        const centerDot = document.createElement('div');
+        centerDot.className = 'center-dot';
+        document.getElementById('cell-14-14').appendChild(centerDot);
+        
+        // Add circular mask
+        const circularMask = document.createElement('div');
+        circularMask.className = 'circular-mask';
+        circularMask.id = 'circular-mask';
+        grid.appendChild(circularMask);
+        
+        // Add second circular mask (draggable)
+        const circularMask2 = document.createElement('div');
+        circularMask2.className = 'circular-mask-2';
+        circularMask2.id = 'circular-mask-2';
+        grid.appendChild(circularMask2);
+        
+        // Format information
+        for (let i = 0; i < 9; i++) {
+            if (i !== 6) {
+                mark('format-info', [8, i], [i, 8]);
+            }
+        }
+        for (let i = 21; i < 29; i++) {
+            mark('format-info', [8, i], [i, 8]);
+        }
+        mark('dark-module', [21, 8]);
+        
+        // Paint codewords using precomputed V3 mapping and colors (initial view only)
+        for (let cwIdx = 0; cwIdx < TOTAL_CODEWORDS; cwIdx++) {
+            const isData = cwIdx < TOTAL_DATA_CODEWORDS;
+            const color = FOUR_COLORS[COLOR_ASSIGNMENT[cwIdx]];
+            const modules = currentCodewordModules[cwIdx] || [];
+            
+            modules.forEach(([row, col], bitIdx) => {
+                const cell = document.getElementById(`cell-${row}-${col}`);
+                if (cell && !cell.classList.contains('finder-pattern') &&
+                    !cell.classList.contains('separator') &&
+                    !cell.classList.contains('timing-pattern') &&
+                    !cell.classList.contains('alignment-pattern') &&
+                    !cell.classList.contains('format-info')) {
+                    
+                    cell.classList.add('codeword-cell');
+                    cell.dataset.color = color;
+                    cell.style.backgroundColor = color;
+                    cell.style.borderColor = color;
+                    
+                    if (bitIdx === 0) {
+                        const label = document.createElement('div');
+                        label.className = 'codeword-label';
+                        label.textContent = isData ? `D${cwIdx+1}` : `E${cwIdx-TOTAL_DATA_CODEWORDS+1}`;
+                        cell.appendChild(label);
+                    }
+                }
+            });
+        }
+        
+        // Legend controls
+        const funcMappings = {
+            'toggle-finder': ['finder-pattern', 'separator', 'alignment-pattern'],
+            'toggle-timing': ['timing-pattern'],
+            'toggle-format': ['format-info', 'dark-module']
+        };
+        
+        Object.entries(funcMappings).forEach(([id, classes]) => {
+            document.getElementById(id)?.addEventListener('change', function() {
+                classes.forEach(cls => {
+                    document.querySelectorAll(`.${cls}`).forEach(el => {
+                        el.classList.toggle('hidden-pattern', !this.checked);
+                    });
+                });
+            });
+        });
+        
+        document.getElementById('toggle-codewords')?.addEventListener('change', function() {
+            document.querySelectorAll('.codeword-cell').forEach(cell => {
+                if (this.checked) {
+                    cell.style.backgroundColor = cell.dataset.color;
+                    cell.style.borderColor = cell.dataset.color;
+                } else {
+                    cell.style.backgroundColor = 'white';
+                    cell.style.borderColor = '#f0f0f0';
+                }
+            });
+        });
+        
+        document.getElementById('toggle-codeword-labels')?.addEventListener('change', function() {
+            document.querySelectorAll('.codeword-label').forEach(el => {
+                el.style.display = this.checked ? 'block' : 'none';
+            });
+        });
+        
+
+        // Circular mask controls
+        const maskCheckbox = document.getElementById('toggle-mask');
+        const radiusSlider = document.getElementById('radius-slider');
+        const radiusValue = document.getElementById('radius-value');
+        const maskedCountSpan = document.getElementById('masked-count');
+        const centerPosSpan = document.getElementById('center-pos');
+        let mask = document.getElementById('circular-mask');
+        
+        // Cell size & center position (based on current QR size)
+        const cellSize = 20;
+        const gap = 1;
+        const gridPadding = 1; // padding of the grid itself
+        const unitSize = cellSize + gap;
+        let centerRow = Math.floor(currentSize / 2);
+        let centerCol = Math.floor(currentSize / 2);
+        let centerX = gridPadding + centerCol * unitSize + cellSize / 2;
+        let centerY = gridPadding + centerRow * unitSize + cellSize / 2;
+        if (centerPosSpan) {
+            centerPosSpan.textContent = `(${centerRow}, ${centerCol})`;
+        }
+                // ========== Second circular mask controls ==========
+        const maskCheckbox2 = document.getElementById('toggle-mask-2');
+        const radiusSlider2 = document.getElementById('radius-slider-2');
+        const radiusValue2 = document.getElementById('radius-value-2');
+        const maskedCountSpan2 = document.getElementById('masked-count-2');
+        const circle2PosSpan = document.getElementById('circle2-pos');
+        let mask2 = document.getElementById('circular-mask-2');
+        
+        // Initial center of second circle (near bottom-right corner of current QR)
+        let circle2CenterX = gridPadding + (currentSize - 1.5) * unitSize;
+        let circle2CenterY = gridPadding + (currentSize - 1.5) * unitSize;
+        
+
+        // Update mask state
+        function updateMask() {
+            const radiusInModules = parseFloat(radiusSlider.value);
+            const radiusInPixels = radiusInModules * unitSize;
+            radiusValue.textContent = radiusInModules.toFixed(1);
+            
+            // Enable/disable slider based on checkbox
+            radiusSlider.disabled = !maskCheckbox.checked;
+            
+            if (maskCheckbox.checked && radiusInModules > 0) {
+                mask.classList.add('active');
+                mask.style.width = (radiusInPixels * 2) + 'px';
+                mask.style.height = (radiusInPixels * 2) + 'px';
+                mask.style.left = (centerX - radiusInPixels) + 'px';
+                mask.style.top = (centerY - radiusInPixels) + 'px';
+                
+                // Update masked codeword count
+                updateMaskedCodewords(radiusInPixels);
+            } else {
+                mask.classList.remove('active');
+                maskedCountSpan.textContent = '0';
+            }
+            
+            // Always recompute combined mask regardless of toggle state
+            if (typeof updateCombinedMask === 'function') {
+                updateCombinedMask();
+            }
+        }
+        
+        // Update masked codewords for the center circle
+        function updateMaskedCodewords(radiusInPixels) {
+            // Clear previous masked state
+            document.querySelectorAll('.codeword-masked').forEach(cell => {
+                cell.classList.remove('codeword-masked');
+                if (cell.dataset.color) {
+                    cell.style.backgroundColor = cell.dataset.color;
+                    cell.style.borderColor = cell.dataset.color;
+                }
+            });
+            
+            // Track which codewords are masked
+            const maskedCodewords = new Set();
+            const codewordModules = currentCodewordModules || [];
+            const totalCodewordsForMask = codewordModules.length;
+            
+            // Iterate over all codewords and their modules
+            for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+                const modules = codewordModules[cwIdx] || [];
+                
+                for (const [row, col] of modules) {
+                    // Compute the four corners of the module (including grid padding)
+                    const moduleLeft = gridPadding + col * unitSize;
+                    const moduleTop = gridPadding + row * unitSize;
+                    const moduleRight = moduleLeft + cellSize;
+                    const moduleBottom = moduleTop + cellSize;
+                    
+                    // Check intersection between circle and module using closest point
+                    const closestX = Math.max(moduleLeft, Math.min(centerX, moduleRight));
+                    const closestY = Math.max(moduleTop, Math.min(centerY, moduleBottom));
+                    
+                    // Distance from closest point to circle center
+                    const distance = Math.sqrt(
+                        Math.pow(closestX - centerX, 2) + 
+                        Math.pow(closestY - centerY, 2)
+                    );
+                    
+                    // If distance < radius, the module intersects the circle
+                    if (distance < radiusInPixels) {
+                        maskedCodewords.add(cwIdx);
+                        break; // Codeword already marked, no need to check remaining modules
+                    }
+                }
+            }
+            
+            // Update masked codeword count
+            maskedCountSpan.textContent = maskedCodewords.size;
+            
+            // Mark masked codewords as white
+            maskedCodewords.forEach(cwIdx => {
+                const modules = codewordModules[cwIdx] || [];
+                modules.forEach(([row, col]) => {
+                    const cell = document.getElementById(`cell-${row}-${col}`);
+                    if (cell && cell.classList.contains('codeword-cell')) {
+                        cell.classList.add('codeword-masked');
+                    }
+                });
+            });
+        }
+        
+        
+        maskCheckbox.addEventListener('change', updateMask);
+        radiusSlider.addEventListener('input', updateMask);
+        
+        // Initialize first slider state
+        updateMask();
+        
+        // Update state for the second mask
+        function updateMask2() {
+            const radiusInModules = parseFloat(radiusSlider2.value);
+            const radiusInPixels = radiusInModules * unitSize;
+            radiusValue2.textContent = radiusInModules.toFixed(1);
+            
+            // Enable/disable slider based on checkbox
+            radiusSlider2.disabled = !maskCheckbox2.checked;
+            
+            if (maskCheckbox2.checked && radiusInModules > 0) {
+                mask2.classList.add('active');
+                mask2.style.width = (radiusInPixels * 2) + 'px';
+                mask2.style.height = (radiusInPixels * 2) + 'px';
+                mask2.style.left = (circle2CenterX - radiusInPixels) + 'px';
+                mask2.style.top = (circle2CenterY - radiusInPixels) + 'px';
+                
+                // Update text to show center in module coordinates
+                const moduleX = ((circle2CenterX - gridPadding) / unitSize).toFixed(1);
+                const moduleY = ((circle2CenterY - gridPadding) / unitSize).toFixed(1);
+                circle2PosSpan.textContent = `(${moduleX}, ${moduleY})`;
+                
+                // Update masked codeword count
+                updateMaskedCodewords2(radiusInPixels);
+            } else {
+                mask2.classList.remove('active');
+                maskedCountSpan2.textContent = '0';
+            }
+            
+            // Always recompute combined mask regardless of toggle state
+            if (typeof updateCombinedMask === 'function') {
+                updateCombinedMask();
+            }
+        }
+        
+        // Update masked codewords for the second circle
+        function updateMaskedCodewords2(radiusInPixels) {
+            const maskedCodewords = new Set();
+            const codewordModules = currentCodewordModules || [];
+            const totalCodewordsForMask = codewordModules.length;
+            
+            // Iterate over all codewords and their modules
+            for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+                const modules = codewordModules[cwIdx] || [];
+                
+                for (const [row, col] of modules) {
+                    // Compute the four corners of the module (including grid padding)
+                    const moduleLeft = gridPadding + col * unitSize;
+                    const moduleTop = gridPadding + row * unitSize;
+                    const moduleRight = moduleLeft + cellSize;
+                    const moduleBottom = moduleTop + cellSize;
+                    
+                    // Check intersection between circle and module
+                    const closestX = Math.max(moduleLeft, Math.min(circle2CenterX, moduleRight));
+                    const closestY = Math.max(moduleTop, Math.min(circle2CenterY, moduleBottom));
+                    
+                    const distance = Math.sqrt(
+                        Math.pow(closestX - circle2CenterX, 2) + 
+                        Math.pow(closestY - circle2CenterY, 2)
+                    );
+                    
+                    if (distance < radiusInPixels) {
+                        maskedCodewords.add(cwIdx);
+                        break;
+                    }
+                }
+            }
+            
+            // Update masked codeword count for second circle
+            maskedCountSpan2.textContent = maskedCodewords.size;
+        }
+        
+        // Merge the effect of both circular masks and update redundancy
+	        function updateRedundancy() {
+	            const redundancyIndicator = document.querySelector('.redundancy-indicator');
+	            const redundancyValue = document.getElementById('redundancy-value');
+	            const redundancyStatus = document.getElementById('redundancy-status');
+	            
+	            // Calculate total number of masked codewords based on current mapping
+	            const maskedCodewords = new Set();
+	            const codewordModules = currentCodewordModules || [];
+	            const totalCodewordsForMask = codewordModules.length;
+	            
+	            // Collect masked codewords from the center circle
+	            const radius1Value = parseFloat(radiusSlider.value);
+	            if (maskCheckbox.checked && radius1Value > 0) {
+	                const radius1 = radius1Value * unitSize;
+	                for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+	                    const modules = codewordModules[cwIdx] || [];
+	                    for (const [row, col] of modules) {
+	                        const moduleLeft = gridPadding + col * unitSize;
+	                        const moduleTop = gridPadding + row * unitSize;
+	                        const moduleRight = moduleLeft + cellSize;
+	                        const moduleBottom = moduleTop + cellSize;
+	                        const closestX = Math.max(moduleLeft, Math.min(centerX, moduleRight));
+	                        const closestY = Math.max(moduleTop, Math.min(centerY, moduleBottom));
+	                        const distance = Math.sqrt(
+	                            Math.pow(closestX - centerX, 2) + 
+	                            Math.pow(closestY - centerY, 2)
+	                        );
+	                        if (distance < radius1) {
+	                            maskedCodewords.add(cwIdx);
+	                            break;
+	                        }
+	                    }
+	                }
+	            }
+	            
+	            // Collect masked codewords from the second circle (only when enabled and radius > 0)
+	            const radius2Value = parseFloat(radiusSlider2.value);
+	            if (maskCheckbox2.checked && radius2Value > 0) {
+	                const radius2 = radius2Value * unitSize;
+	                for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+	                    const modules = codewordModules[cwIdx] || [];
+	                    for (const [row, col] of modules) {
+	                        const moduleLeft = gridPadding + col * unitSize;
+	                        const moduleTop = gridPadding + row * unitSize;
+	                        const moduleRight = moduleLeft + cellSize;
+	                        const moduleBottom = moduleTop + cellSize;
+	                        const closestX = Math.max(moduleLeft, Math.min(circle2CenterX, moduleRight));
+	                        const closestY = Math.max(moduleTop, Math.min(circle2CenterY, moduleBottom));
+	                        const distance = Math.sqrt(
+	                            Math.pow(closestX - circle2CenterX, 2) + 
+	                            Math.pow(closestY - circle2CenterY, 2)
+	                        );
+	                        if (distance < radius2) {
+	                            maskedCodewords.add(cwIdx);
+	                            break;
+	                        }
+	                    }
+	                }
+	            }
+            
+	            const maskedCount = maskedCodewords.size;
+	            
+	            // Use current configuration parameters
+	            const totalCW = typeof currentTotalCodewords !== 'undefined' ? currentTotalCodewords : TOTAL_CODEWORDS;
+	            const errorPercent = typeof currentErrorLevel !== 'undefined' ? ERROR_LEVEL_TO_CAPACITY[currentErrorLevel] : 30;
+	            const maxLossCapacity = typeof currentMaxLossCapacity !== 'undefined' ? currentMaxLossCapacity : Math.floor(totalCW * errorPercent / 100);
+	            
+	            // Remaining available loss capacity
+	            const remainingCapacity = maxLossCapacity - maskedCount;
+	            
+	            // Display remaining loss capacity as a fraction
+            if (remainingCapacity >= 0) {
+                redundancyValue.textContent = `${remainingCapacity}/${maxLossCapacity}`;
+                redundancyStatus.classList.remove('show');
+                redundancyStatus.textContent = '';
+                
+	                // Smooth green-to-red gradient
+	                // remainingCapacity: 21(green) -> 0(red)
+                const ratio = remainingCapacity / maxLossCapacity; // 1.0 -> 0.0
+                const red = Math.round(255 * (1 - ratio));
+                const green = Math.round(200 * ratio);
+                const color = `rgb(${red}, ${green}, 0)`;
+                
+                redundancyValue.style.color = color;
+                redundancyIndicator.style.borderLeft = `4px solid ${color}`;
+                
+	                // Adjust background color based on ratio
+                const bgRed = Math.round(255 - 10 * ratio);
+                const bgGreen = Math.round(245 - 15 * (1 - ratio));
+                const bgBlue = Math.round(245 - 15 * (1 - ratio));
+                redundancyIndicator.style.background = `rgb(${bgRed}, ${bgGreen}, ${bgBlue})`;
+	            } else {
+	                // Unavailable: beyond error correction capacity
+                redundancyValue.textContent = `0/${maxLossCapacity}`;
+                redundancyValue.style.color = '#f44336';
+                redundancyIndicator.style.borderLeft = '4px solid #f44336';
+                redundancyIndicator.style.background = '#ffebee';
+                redundancyStatus.textContent = 'Unavailable';
+                redundancyStatus.classList.add('show');
+            }
+        }
+        
+        function updateCombinedMask() {
+            // Clear all masked state
+            document.querySelectorAll('.codeword-masked').forEach(cell => {
+                cell.classList.remove('codeword-masked');
+                if (cell.dataset.color) {
+                    cell.style.backgroundColor = cell.dataset.color;
+                    cell.style.borderColor = cell.dataset.color;
+                }
+            });
+            
+            const allMaskedCodewords = new Set();
+            const codewordModules = currentCodewordModules || [];
+            const totalCodewordsForMask = codewordModules.length;
+            
+            // Collect masked codewords from center circle (only when enabled and radius > 0)
+            const radius1Value = parseFloat(radiusSlider.value);
+            if (maskCheckbox.checked && radius1Value > 0) {
+                const radius1 = radius1Value * unitSize;
+                for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+                    const modules = codewordModules[cwIdx] || [];
+                    for (const [row, col] of modules) {
+                        const moduleLeft = gridPadding + col * unitSize;
+                        const moduleTop = gridPadding + row * unitSize;
+                        const moduleRight = moduleLeft + cellSize;
+                        const moduleBottom = moduleTop + cellSize;
+                        const closestX = Math.max(moduleLeft, Math.min(centerX, moduleRight));
+                        const closestY = Math.max(moduleTop, Math.min(centerY, moduleBottom));
+                        const distance = Math.sqrt(
+                            Math.pow(closestX - centerX, 2) + 
+                            Math.pow(closestY - centerY, 2)
+                        );
+                        if (distance < radius1) {
+                            allMaskedCodewords.add(cwIdx);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Collect masked codewords from second circle (only when enabled and radius > 0)
+            const radius2Value = parseFloat(radiusSlider2.value);
+            if (maskCheckbox2.checked && radius2Value > 0) {
+                const radius2 = radius2Value * unitSize;
+                for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+                    const modules = codewordModules[cwIdx] || [];
+                    for (const [row, col] of modules) {
+                        const moduleLeft = gridPadding + col * unitSize;
+                        const moduleTop = gridPadding + row * unitSize;
+                        const moduleRight = moduleLeft + cellSize;
+                        const moduleBottom = moduleTop + cellSize;
+                        const closestX = Math.max(moduleLeft, Math.min(circle2CenterX, moduleRight));
+                        const closestY = Math.max(moduleTop, Math.min(circle2CenterY, moduleBottom));
+                        const distance = Math.sqrt(
+                            Math.pow(closestX - circle2CenterX, 2) + 
+                            Math.pow(closestY - circle2CenterY, 2)
+                        );
+                        if (distance < radius2) {
+                            allMaskedCodewords.add(cwIdx);
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Apply mask to all affected codewords
+            allMaskedCodewords.forEach(cwIdx => {
+                const modules = codewordModules[cwIdx] || [];
+                modules.forEach(([row, col]) => {
+                    const cell = document.getElementById(`cell-${row}-${col}`);
+                    if (cell && cell.classList.contains('codeword-cell')) {
+                        cell.classList.add('codeword-masked');
+                    }
+                });
+            });
+            
+            // Update redundancy indicator
+            updateRedundancy();
+        }
+        
+        maskCheckbox2.addEventListener('change', updateMask2);
+        radiusSlider2.addEventListener('input', updateMask2);
+        
+        // Drag behavior for second circle
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let circleStartX = 0;
+        let circleStartY = 0;
+        
+        if (mask2) mask2.addEventListener('mousedown', (e) => {
+            if (!maskCheckbox2.checked) return;
+            isDragging = true;
+            mask2.classList.add('dragging');
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            circleStartX = circle2CenterX;
+            circleStartY = circle2CenterY;
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            
+            const deltaX = e.clientX - dragStartX;
+            const deltaY = e.clientY - dragStartY;
+            
+            circle2CenterX = circleStartX + deltaX;
+            circle2CenterY = circleStartY + deltaY;
+            
+            // Keep circle inside grid bounds
+            const gridRect = grid.getBoundingClientRect();
+            const gridLeft = gridPadding;
+            const gridTop = gridPadding;
+            const gridRight = gridPadding + currentSize * unitSize;
+            const gridBottom = gridPadding + currentSize * unitSize;
+            
+            circle2CenterX = Math.max(gridLeft, Math.min(circle2CenterX, gridRight));
+            circle2CenterY = Math.max(gridTop, Math.min(circle2CenterY, gridBottom));
+            
+            updateMask2();
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                mask2.classList.remove('dragging');
+            }
+        });
+        
+        // Touch support for second circle
+        if (mask2) {
+            mask2.addEventListener('touchstart', (e) => {
+                if (!maskCheckbox2.checked) return;
+                isDragging = true;
+                mask2.classList.add('dragging');
+                const touch = e.touches[0];
+                dragStartX = touch.clientX;
+                dragStartY = touch.clientY;
+                circleStartX = circle2CenterX;
+                circleStartY = circle2CenterY;
+                e.preventDefault();
+            }, { passive: false });
+        }
+        
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - dragStartX;
+            const deltaY = touch.clientY - dragStartY;
+            
+            circle2CenterX = circleStartX + deltaX;
+            circle2CenterY = circleStartY + deltaY;
+            
+            const gridRect = grid.getBoundingClientRect();
+            const gridLeft = gridPadding;
+            const gridTop = gridPadding;
+            const gridRight = gridPadding + currentSize * unitSize;
+            const gridBottom = gridPadding + currentSize * unitSize;
+            
+            circle2CenterX = Math.max(gridLeft, Math.min(circle2CenterX, gridRight));
+            circle2CenterY = Math.max(gridTop, Math.min(circle2CenterY, gridBottom));
+            
+            updateMask2();
+            e.preventDefault();
+        }, { passive: false });
+        
+        document.addEventListener('touchend', () => {
+            if (isDragging) {
+                isDragging = false;
+                mask2.classList.remove('dragging');
+            }
+        });
+
+        
+        
+        // ========== Configuration panel ==========
+        const qrVersionSelect = document.getElementById('qr-version');
+        const errorLevelSelect = document.getElementById('error-level');
+        const applyConfigButton = document.getElementById('apply-config');
+        
+        // Version to size mapping
+        const VERSION_TO_SIZE = {
+            1: 21, 2: 25, 3: 29, 4: 33, 5: 37
+        };
+        
+        // Error correction level to capacity mapping
+        const ERROR_LEVEL_TO_CAPACITY = {
+            'L': 7, 'M': 15, 'Q': 25, 'H': 30
+        };
+        
+
+        // QR code version and error correction capacity data
+        // QR code capacity data (based on ISO/IEC 18004)
+        // Format: [total codewords, data codewords, error-correction codewords]
+        const QR_CAPACITY_DATA = {
+            1: { 
+                L: [26, 19, 7],    // 7% error correction capacity
+                M: [26, 16, 10],   // 15% error correction capacity
+                Q: [26, 13, 13],   // 25% error correction capacity
+                H: [26, 9, 17]     // 30% error correction capacity
+            },
+            2: { 
+                L: [44, 34, 10],
+                M: [44, 28, 16],
+                Q: [44, 22, 22],
+                H: [44, 16, 28]
+            },
+            3: { 
+                L: [70, 55, 15],
+                M: [70, 44, 26],
+                Q: [70, 34, 36],
+                H: [70, 26, 44]
+            },
+            4: { 
+                L: [100, 80, 20],
+                M: [100, 64, 36],
+                Q: [100, 48, 52],
+                H: [100, 36, 64]
+            },
+            5: { 
+                L: [134, 108, 26],
+                M: [134, 86, 48],
+                Q: [134, 62, 72],
+                H: [134, 46, 88]
+            }
+        };
+        
+
+        // Apply configuration button
+        if (applyConfigButton) {
+            applyConfigButton.addEventListener('click', () => {
+                const newVersion = parseInt(qrVersionSelect.value);
+                const newErrorLevel = errorLevelSelect.value;
+                const newSize = VERSION_TO_SIZE[newVersion];
+                
+                // Read capacity data
+                const capacityData = QR_CAPACITY_DATA[newVersion][newErrorLevel];
+                const [totalCW, dataCW, errorCW] = capacityData;
+                
+                // Update global configuration state
+                currentVersion = newVersion;
+                currentErrorLevel = newErrorLevel;
+                currentSize = newSize;
+                currentTotalCodewords = totalCW;
+                currentDataCodewords = dataCW;
+                currentErrorCodewords = errorCW;
+                currentMaxLossCapacity = Math.floor(totalCW * ERROR_LEVEL_TO_CAPACITY[newErrorLevel] / 100);
+                
+                // Disable button and show progress text
+                applyConfigButton.disabled = true;
+                applyConfigButton.textContent = 'Applying...';
+                
+                // Delay a bit so the button state is visible
+                setTimeout(() => {
+                    // Regenerate QR code with new configuration
+                    regenerateQRCode(newVersion, newSize);
+                    
+                    // Refresh redundancy indicator
+                    if (typeof updateRedundancy === 'function') {
+                        updateRedundancy();
+                    }
+                    
+                    // Restore button state
+                    applyConfigButton.disabled = false;
+                    applyConfigButton.textContent = 'Apply Configuration';
+                    
+                }, 100);
+            });
+        }
+        
+
+        
+        // Build adjacency graph and update current codeword -> module mapping
+        function buildCodewordAdjacency(dataModules, totalCodewords) {
+            const adjacency = Array.from({length: totalCodewords}, () => new Set());
+            
+            // Collect module coordinates for each codeword
+            const codewordModules = [];
+            for (let cwIdx = 0; cwIdx < totalCodewords; cwIdx++) {
+                const startBit = cwIdx * 8;
+                const modules = [];
+                for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
+                    if (startBit + bitIdx < dataModules.length) {
+                        modules.push(dataModules[startBit + bitIdx]);
+                    }
+                }
+                codewordModules.push(modules);
+            }
+            // Persist mapping for this version for masking logic
+            currentCodewordModules = codewordModules;
+            
+            // Two codewords are adjacent if any of their modules are adjacent
+            for (let i = 0; i < totalCodewords; i++) {
+                for (let j = i + 1; j < totalCodewords; j++) {
+                    let isAdjacent = false;
+                    for (const [r1, c1] of codewordModules[i]) {
+                        for (const [r2, c2] of codewordModules[j]) {
+                            if ((Math.abs(r1 - r2) === 1 && c1 === c2) ||
+                                (Math.abs(c1 - c2) === 1 && r1 === r2)) {
+                                isAdjacent = true;
+                                break;
+                            }
+                        }
+                        if (isAdjacent) break;
+                    }
+                    if (isAdjacent) {
+                        adjacency[i].add(j);
+                        adjacency[j].add(i);
+                    }
+                }
+            }
+            
+            return adjacency;
+        }
+        
+        // Greedy graph coloring
+        function greedyColoring(adjacency, numColors) {
+            const n = adjacency.length;
+            const colors = new Array(n).fill(-1);
+            
+            for (let node = 0; node < n; node++) {
+                const usedColors = new Set();
+                for (const neighbor of adjacency[node]) {
+                    if (colors[neighbor] !== -1) {
+                        usedColors.add(colors[neighbor]);
+                    }
+                }
+                
+                for (let color = 0; color < numColors; color++) {
+                    if (!usedColors.has(color)) {
+                        colors[node] = color;
+                        break;
+                    }
+                }
+                
+                if (colors[node] === -1) {
+                    colors[node] = 0;
+                }
+            }
+            
+            return colors;
+        }
+        // Regenerate QR code for a given version/size
+        function regenerateQRCode(version, size) {
+            // Clear current grid
+            const qrGrid = document.getElementById('qr-grid');
+            if (!qrGrid) return;
+            
+            qrGrid.innerHTML = '';
+            qrGrid.style.gridTemplateColumns = `repeat(${size}, 20px)`;
+            qrGrid.style.gridTemplateRows = `repeat(${size}, 20px)`;
+
+            // Update current size and both circle centers
+            currentSize = size;
+            centerRow = Math.floor(size / 2);
+            centerCol = Math.floor(size / 2);
+            centerX = gridPadding + centerCol * unitSize + cellSize / 2;
+            centerY = gridPadding + centerRow * unitSize + cellSize / 2;
+            if (centerPosSpan) {
+                centerPosSpan.textContent = `(${centerRow}, ${centerCol})`;
+            }
+            circle2CenterX = gridPadding + (size - 1.5) * unitSize;
+            circle2CenterY = gridPadding + (size - 1.5) * unitSize;
+            
+            // Recreate grid cells
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.id = `cell-${i}-${j}`;
+                    qrGrid.appendChild(cell);
+                }
+            }
+            
+            // Clear coordinate labels
+            const coordX = document.getElementById('coord-x');
+            const coordY = document.getElementById('coord-y');
+            if (coordX) coordX.innerHTML = '';
+            if (coordY) coordY.innerHTML = '';
+            
+            // Rebuild coordinate labels
+            for (let i = 0; i < size; i++) {
+                if (coordX) {
+                    const labelX = document.createElement('div');
+                    labelX.className = 'coord-label-x';
+                    labelX.textContent = i;
+                    coordX.appendChild(labelX);
+                }
+                
+                if (coordY) {
+                    const labelY = document.createElement('div');
+                    labelY.className = 'coord-label-y';
+                    labelY.textContent = i;
+                    coordY.appendChild(labelY);
+                }
+            }
+            
+            // Mark functional patterns (finder patterns)
+            for (let i = 0; i < 7; i++) {
+                for (let j = 0; j < 7; j++) {
+                    markCell(i, j, 'finder-pattern');
+                    markCell(i, size-7+j, 'finder-pattern');
+                    markCell(size-7+i, j, 'finder-pattern');
+                }
+            }
+            
+            // Separators
+            for (let i = 0; i < 8; i++) {
+                markCell(i, 7, 'separator');
+                markCell(7, i, 'separator');
+                markCell(i, size-8, 'separator');
+                markCell(7, size-8+i, 'separator');
+                markCell(size-8, i, 'separator');
+                if (i < 7) markCell(size-7+i, 7, 'separator');
+            }
+            
+            // Timing patterns
+            for (let i = 8; i < size-8; i++) {
+                markCell(6, i, 'timing-pattern');
+                markCell(i, 6, 'timing-pattern');
+            }
+            
+            // Alignment patterns (only for versions >= 2)
+            // V2: (18,18), V3: (22,22), V4: (26,26), V5: (30,30)
+	            if (version >= 2) {
+	                const alignmentCenters = { 2: 18, 3: 22, 4: 26, 5: 30 };
+	                const alignCenter = alignmentCenters[version];
+	                if (alignCenter) {
+	                    for (let i = -2; i <= 2; i++) {
+	                        for (let j = -2; j <= 2; j++) {
+	                            markCell(alignCenter+i, alignCenter+j, 'alignment-pattern');
+	                        }
+	                    }
+	                }
+	            }
+            
+            // Format information
+            for (let i = 0; i < 9; i++) {
+                if (i !== 6) {
+                    markCell(8, i, 'format-info');
+                    markCell(i, 8, 'format-info');
+                }
+            }
+            for (let i = size-8; i < size; i++) {
+                markCell(8, i, 'format-info');
+                markCell(i, 8, 'format-info');
+            }
+            
+            // Dark module
+            markCell(4*version+9, 8, 'dark-module');
+            
+            // Add center mark (for odd sizes)
+            const centerPos = Math.floor(size / 2);
+            const centerCell = document.getElementById(`cell-${centerPos}-${centerPos}`);
+            if (centerCell) {
+                const centerDot = document.createElement('div');
+                centerDot.className = 'center-dot';
+                centerCell.appendChild(centerDot);
+            }
+            
+		            // Generate and color data codewords
+	            generateAndMarkCodewords(version, size);
+            
+            // Recreate circular masks
+            const circularMask = document.createElement('div');
+            circularMask.className = 'circular-mask';
+            circularMask.id = 'circular-mask';
+            qrGrid.appendChild(circularMask);
+            
+            const circularMask2 = document.createElement('div');
+            circularMask2.className = 'circular-mask-2';
+            circularMask2.id = 'circular-mask-2';
+            qrGrid.appendChild(circularMask2);
+            
+            // Refresh mask references, drag events, and mask state
+            mask = document.getElementById('circular-mask');
+            mask2 = document.getElementById('circular-mask-2');
+            rebindDragEvents();
+            updateMask();
+            updateMask2();
+        }
+        
+        // Helper to add a class to a single cell
+        function markCell(row, col, className) {
+            const cell = document.getElementById(`cell-${row}-${col}`);
+            if (cell) cell.classList.add(className);
+        }
+        
+        // Generate module order and color codewords (graph-coloring based)
+        function generateAndMarkCodewords(version, size) {
+            // 1. Generate zig-zag module order
+            const moduleOrder = [];
+            let goingUp = true;
+            
+            for (let colRight = size - 1; colRight >= 0; colRight -= 2) {
+                if (colRight === 6) colRight--;
+                if (colRight < 0) break;
+                
+                const colLeft = colRight - 1;
+                
+                if (goingUp) {
+                    for (let row = size - 1; row >= 0; row--) {
+                        moduleOrder.push([row, colRight]);
+                        if (colLeft >= 0 && colLeft !== 6) moduleOrder.push([row, colLeft]);
+                    }
+                } else {
+                    for (let row = 0; row < size; row++) {
+                        moduleOrder.push([row, colRight]);
+                        if (colLeft >= 0 && colLeft !== 6) moduleOrder.push([row, colLeft]);
+                    }
+                }
+                goingUp = !goingUp;
+            }
+            
+            // 2. Filter out functional modules to get data modules
+            const dataModules = [];
+            for (const [row, col] of moduleOrder) {
+                const cell = document.getElementById(`cell-${row}-${col}`);
+                if (cell && !cell.classList.contains('finder-pattern') && 
+                    !cell.classList.contains('separator') &&
+                    !cell.classList.contains('timing-pattern') &&
+                    !cell.classList.contains('alignment-pattern') &&
+                    !cell.classList.contains('format-info') &&
+                    !cell.classList.contains('dark-module')) {
+                    dataModules.push([row, col]);
+                }
+            }
+            
+            // 3. Build adjacency and update current codeword mapping
+            const adjacency = buildCodewordAdjacency(dataModules, currentTotalCodewords);
+            
+            // 4. Color codewords via greedy graph coloring
+            const colorAssignment = greedyColoring(adjacency, 4);
+            
+            // 5. Apply colors and labels to cells
+            for (let cwIdx = 0; cwIdx < currentTotalCodewords; cwIdx++) {
+                const startBit = cwIdx * 8;
+                const color = FOUR_COLORS[colorAssignment[cwIdx]];
+                
+                for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
+                    const moduleIdx = startBit + bitIdx;
+                    if (moduleIdx >= dataModules.length) break;
+                    
+                    const [row, col] = dataModules[moduleIdx];
+                    const cell = document.getElementById(`cell-${row}-${col}`);
+                    if (cell) {
+                        cell.classList.add('codeword-cell');
+                        cell.dataset.color = color;
+                        cell.style.backgroundColor = color;
+                        cell.style.borderColor = color;
+                        
+                        if (bitIdx === 0) {
+                            const label = document.createElement('div');
+                            label.className = 'codeword-label';
+                            const isData = cwIdx < currentDataCodewords;
+                            label.textContent = isData ? `D${cwIdx+1}` : `E${cwIdx-currentDataCodewords+1}`;
+                            cell.appendChild(label);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Rebind drag events (called after regenerating QR code to bind new mask2)
+        function rebindDragEvents() {
+            const newMask2 = document.getElementById('circular-mask-2');
+            if (!newMask2) return;
+            mask2 = newMask2;
+            
+            mask2.addEventListener('mousedown', (e) => {
+                if (!maskCheckbox2.checked) return;
+                isDragging = true;
+                mask2.classList.add('dragging');
+                dragStartX = e.clientX;
+                dragStartY = e.clientY;
+                circleStartX = circle2CenterX;
+                circleStartY = circle2CenterY;
+                e.preventDefault();
+            });
+            
+            mask2.addEventListener('touchstart', (e) => {
+                if (!maskCheckbox2.checked) return;
+                isDragging = true;
+                mask2.classList.add('dragging');
+                const touch = e.touches[0];
+                dragStartX = touch.clientX;
+                dragStartY = touch.clientY;
+                circleStartX = circle2CenterX;
+                circleStartY = circle2CenterY;
+                e.preventDefault();
+            }, { passive: false });
+        }
+                // ========== Initial state ==========
+        // Initialize first circle (disabled by default)
+        updateMask();
+        
+        // Initialize second circle (enabled, radius 2.0)
+        maskCheckbox2.checked = true;
+        updateMask2();
+        
+        // Initialize redundancy display
+        updateRedundancy();
+    </script>
+</body>
+</html>
