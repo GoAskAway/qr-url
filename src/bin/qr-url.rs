@@ -1087,6 +1087,164 @@ mod server_tests {
         assert_eq!(json["base44"], raw_base44);
     }
 
+    // ------------------------------------------------------------------------
+    // Raw transmission edge case tests
+    // These test that special characters pass through HTTP correctly
+    // We use a simplified handler that just echoes the received string
+    // ------------------------------------------------------------------------
+
+    /// Create a simple echo app for transmission testing
+    fn create_echo_app() -> Router {
+        use axum::{extract::Path, routing::get};
+
+        async fn echo_handler(Path(raw): Path<String>) -> String {
+            // Normalize: raw (19 chars) or URL-encoded (>19 chars)
+            let result = if raw.len() == 19 {
+                raw
+            } else if raw.len() > 19 {
+                match urlencoding::decode(&raw) {
+                    Ok(decoded) => decoded.into_owned(),
+                    Err(_) => format!("DECODE_ERROR:{}", raw),
+                }
+            } else {
+                format!("TOO_SHORT:{}", raw)
+            };
+            result
+        }
+
+        Router::new().route("/{input}", get(echo_handler))
+    }
+
+    /// Helper to test raw transmission (19 chars, no URL encoding)
+    async fn test_raw_transmission(input: &str) -> String {
+        assert_eq!(input.len(), 19, "Test input must be 19 chars");
+        let app = create_echo_app();
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", input))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        String::from_utf8(body.to_vec()).unwrap()
+    }
+
+    /// Helper to test URL-encoded transmission
+    async fn test_encoded_transmission(input: &str) -> String {
+        assert_eq!(input.len(), 19, "Test input must be 19 chars");
+        let app = create_echo_app();
+        let encoded = urlencoding::encode(input);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", encoded))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        String::from_utf8(body.to_vec()).unwrap()
+    }
+
+    // ---- Tests that PASS with raw transmission ----
+
+    #[tokio::test]
+    async fn raw_transmission_dot_at_start() {
+        // '.' at start - hidden file pattern, works in raw mode
+        let input = ".AAAAAAAAAAAAAAAAAA"; // 19 chars
+        let result = test_raw_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn raw_transmission_double_dot() {
+        // '..' in middle - path traversal pattern, works in raw mode
+        let input = "AAAA..AAAAAAAAAAAAA"; // 19 chars
+        let result = test_raw_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn raw_transmission_colon_at_start() {
+        // ':' at start - works in raw mode
+        let input = ":AAAAAAAAAAAAAAAAAA"; // 19 chars
+        let result = test_raw_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn raw_transmission_safe_special_chars() {
+        // Special chars without '/' work in raw mode: $ % * + - . :
+        // Note: % followed by non-hex is safe
+        let input = "$%Y*+-.::$%Z*+-.::A"; // 19 chars, no /
+        let result = test_raw_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    // ---- Tests that FAIL with raw but PASS with URL encoding ----
+    // These document cases where clients MUST use URL encoding
+
+    #[tokio::test]
+    async fn encoded_transmission_slash_at_start() {
+        // '/' at start: raw "//xxx" fails (parsed as netloc)
+        // URL-encoded works
+        let input = "/AAAAAAAAAAAAAAAAAA"; // 19 chars
+        let result = test_encoded_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn encoded_transmission_double_slash() {
+        // '//' in middle: raw fails (route not matched)
+        // URL-encoded works
+        let input = "AAAA//AAAAAAAAAAAAA"; // 19 chars
+        let result = test_encoded_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn encoded_transmission_percent_with_valid_hex() {
+        // '%41' in raw mode: axum decodes to 'A', changing length
+        // URL-encoded (%2541) works correctly
+        let input = "AAA%41AAAAAAAAAAAAA"; // 19 chars
+        let result = test_encoded_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn encoded_transmission_all_special_chars() {
+        // All Base44 special chars: $ % * + - . / :
+        let input = "$%*+-./:$%*+-./:$%*"; // 19 chars
+        let result = test_encoded_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn encoded_transmission_consecutive_slashes() {
+        // Multiple consecutive slashes
+        let input = "///AAAAAAAAAAAAAAAA"; // 19 chars
+        let result = test_encoded_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn encoded_transmission_mixed_edge_cases() {
+        // Mix of all problematic patterns
+        let input = "/%41//..::$%*+-.ABC"; // 19 chars
+        let result = test_encoded_transmission(input).await;
+        assert_eq!(result, input);
+    }
+
     #[tokio::test]
     async fn decode_invalid_base44_wrong_length_short() {
         let app = create_test_app(OutputMode::Json, None);
