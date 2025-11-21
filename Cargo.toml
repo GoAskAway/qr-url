@@ -20,6 +20,7 @@ uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
 thiserror = "2"
 hex = "0.4"
 qr-base44 = { git = "https://github.com/kookyleo/qr-base44.git", branch = "feat/optimal-bit-encoding" }
+clap = { version = "4", features = ["derive"] }
 
 # HTTP server (optional, for server subcommand)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"], optional = true }

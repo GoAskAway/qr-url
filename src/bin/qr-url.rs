@@ -1,43 +1,86 @@
+use clap::{Parser, Subcommand};
 use qr_url::{decode_to_bytes, decode_to_string, encode_uuid, encode_uuid_bytes, generate_v4};
 use std::io::{self, Read};
 use uuid::Uuid;
 
-fn print_usage() {
-    eprintln!(
-        "qr-url CLI - Custom UUID variant encoder\n\n\
-        IMPORTANT: This tool works with custom UUID variants (signature '41c2ae'), NOT standard UUID v4.\n\n\
-        Commands:\n  \
-        gen                       Generate a random custom UUID with signature '41c2ae' (19-char Base44)\n  \
-        encode <UUID|HEX|@->     Encode a custom UUID into Base44 (requires '41c2ae' signature). Accepts:\n                           \
-        - canonical UUID string (0xxxxxxx-xxxx-41c2-aexx-xxxxxxxxxxxx, first char 0-7)\n                           \
-        - 32-hex (no dashes)\n                           \
-        - raw 16-byte via stdin with @-\n  \
-        decode <BASE44|@->       Decode Base44 string back to custom UUID (19 chars)\n  \
-        server [OPTIONS]         Start HTTP server (requires 'server' feature)\n\n\
-        Server Options:\n  \
-        -p, --port <PORT>        Listen port (default: 3000, or 443 with TLS)\n  \
-        -b, --bind <ADDR>        Bind address (default: 127.0.0.1)\n  \
-        -m, --mode <MODE>        Output mode (default: json). Formats:\n                           \
-        - json                   Return JSON {{base44, uuid, bytes}}\n                           \
-        - 301 <URL>              Redirect with 301 (permanent), e.g. '301 https://x.com/{{uuid}}'\n                           \
-        - 302 <URL>              Redirect with 302 (temporary), e.g. '302 https://x.com/{{uuid}}'\n                           \
-        - html <PATH>            Render HTML template file, supports {{uuid}}, {{base44}}, {{bytes}}\n\n\
-        TLS Options:\n  \
-        --cert <PATH>            Path to TLS certificate file (PEM format)\n  \
-        --key <PATH>             Path to TLS private key file (PEM format)\n\n\
-        Options:\n  \
-        -q, --quiet              Only print the primary output\n  \
-        -h, --help               Show this help\n\n\
-        Examples:\n  \
-        qr-url gen\n  \
-        qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f\n  \
-        qr-url decode 3856ECXC*$A2D-ASF2-\n  \
-        qr-url server -m json\n  \
-        qr-url server -m '301 https://example.com/item/{{uuid}}'\n  \
-        qr-url server -m '302 https://example.com/go/{{base44}}'\n  \
-        qr-url server -m 'html /path/to/landing.html'\n  \
-        qr-url server -p 443 --cert cert.pem --key key.pem\n"
-    );
+/// qr-url CLI - Custom UUID variant encoder
+///
+/// IMPORTANT: This tool works with custom UUID variants (signature '41c2ae'), NOT standard UUID v4.
+#[derive(Parser)]
+#[command(name = "qr-url", version, about, long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Generate a random custom UUID with signature '41c2ae' (19-char Base44)
+    Gen {
+        /// Only print the primary output
+        #[arg(short, long)]
+        quiet: bool,
+    },
+
+    /// Encode a custom UUID into Base44 (requires '41c2ae' signature)
+    ///
+    /// Accepts: canonical UUID string, 32-hex (no dashes), or raw 16-byte via stdin with @-
+    Encode {
+        /// UUID input (canonical, 32-hex, or @- for stdin)
+        input: String,
+
+        /// Only print the Base44 output
+        #[arg(short, long)]
+        quiet: bool,
+    },
+
+    /// Decode Base44 string back to custom UUID (19 chars)
+    Decode {
+        /// Base44 string or @- for stdin
+        input: String,
+
+        /// Only print the UUID output
+        #[arg(short, long)]
+        quiet: bool,
+    },
+
+    /// Start HTTP server (requires 'server' feature)
+    #[cfg(feature = "server")]
+    Server(ServerArgs),
+
+    /// Start HTTP server (requires 'server' feature)
+    #[cfg(not(feature = "server"))]
+    Server {},
+}
+
+#[cfg(feature = "server")]
+#[derive(clap::Args)]
+struct ServerArgs {
+    /// Listen port (default: 3000, or 443 with TLS)
+    #[arg(short, long)]
+    port: Option<u16>,
+
+    /// Bind address
+    #[arg(short, long, default_value = "127.0.0.1")]
+    bind: String,
+
+    /// Output mode: json, '301 <URL>', '302 <URL>', or 'html <PATH>'
+    ///
+    /// Examples:
+    ///   -m json
+    ///   -m '301 https://example.com/item/{{uuid}}'
+    ///   -m '302 https://example.com/go/{{base44}}'
+    ///   -m 'html /path/to/landing.html'
+    #[arg(short, long, default_value = "json")]
+    mode: String,
+
+    /// Path to TLS certificate file (PEM format)
+    #[arg(long)]
+    cert: Option<String>,
+
+    /// Path to TLS private key file (PEM format)
+    #[arg(long)]
+    key: Option<String>,
 }
 
 fn parse_uuid_input(arg: &str) -> io::Result<[u8; 16]> {
@@ -273,163 +316,81 @@ mod server {
 }
 
 #[cfg(feature = "server")]
-fn run_server(args: &[String]) {
-    let mut port: Option<u16> = None;
-    let mut bind = "127.0.0.1".to_string();
-    let mut mode_str: Option<String> = None;
-    let mut cert_path: Option<String> = None;
-    let mut key_path: Option<String> = None;
-
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-p" | "--port" => {
-                i += 1;
-                if i < args.len() {
-                    port = Some(args[i].parse().unwrap_or_else(|_| {
-                        eprintln!("Invalid port: {}", args[i]);
-                        std::process::exit(2);
-                    }));
-                }
-            }
-            "-b" | "--bind" => {
-                i += 1;
-                if i < args.len() {
-                    bind = args[i].clone();
-                }
-            }
-            "-m" | "--mode" => {
-                i += 1;
-                if i < args.len() {
-                    mode_str = Some(args[i].clone());
-                }
-            }
-            "--cert" => {
-                i += 1;
-                if i < args.len() {
-                    cert_path = Some(args[i].clone());
-                }
-            }
-            "--key" => {
-                i += 1;
-                if i < args.len() {
-                    key_path = Some(args[i].clone());
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-
-    // Parse mode (default: json)
-    let mode = match &mode_str {
-        Some(s) => server::OutputMode::parse(s).unwrap_or_else(|e| {
-            eprintln!("{e}");
-            std::process::exit(2);
-        }),
-        None => server::OutputMode::Json,
-    };
+fn run_server(args: ServerArgs) {
+    // Parse mode
+    let mode = server::OutputMode::parse(&args.mode).unwrap_or_else(|e| {
+        eprintln!("{e}");
+        std::process::exit(2);
+    });
 
     // Build TLS config if both cert and key are provided
-    let tls = match (&cert_path, &key_path) {
+    let tls = match (&args.cert, &args.key) {
         (Some(cert), Some(key)) => Some(server::TlsConfig {
             cert_path: cert.clone(),
             key_path: key.clone(),
         }),
         (Some(_), None) => {
-            eprintln!("--cert requires --key");
+            eprintln!("error: --cert requires --key");
             std::process::exit(2);
         }
         (None, Some(_)) => {
-            eprintln!("--key requires --cert");
+            eprintln!("error: --key requires --cert");
             std::process::exit(2);
         }
         (None, None) => None,
     };
 
     // Default port: 443 for TLS, 3000 for HTTP
-    let port = port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
+    let port = args.port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
 
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
-        .block_on(server::run(&bind, port, mode, tls));
-}
-
-#[cfg(not(feature = "server"))]
-fn run_server(_args: &[String]) {
-    eprintln!("Server feature not enabled. Rebuild with: cargo build --features server");
-    std::process::exit(2);
+        .block_on(server::run(&args.bind, port, mode, tls));
 }
 
 fn main() {
-    let mut args: Vec<String> = std::env::args().collect();
-    if args.len() <= 1 {
-        print_usage();
-        return;
-    }
+    let cli = Cli::parse();
 
-    let mut quiet = false;
-    args.retain(|a| match a.as_str() {
-        "-q" | "--quiet" => {
-            quiet = true;
-            false
-        }
-        _ => true,
-    });
-
-    match args.get(1).map(String::as_str) {
-        Some("-h") | Some("--help") => {
-            print_usage();
-        }
-        Some("gen") => {
+    match cli.command {
+        Commands::Gen { quiet } => {
             let u = generate_v4();
-            let b45 = encode_uuid(u).expect("generate_v4 should produce valid signature UUID");
+            let b44 = encode_uuid(u).expect("generate_v4 should produce valid signature UUID");
             if quiet {
-                println!("{b45}");
-                return;
+                println!("{b44}");
+            } else {
+                println!("Base44: {b44}");
+                println!("UUID:   {}", u.hyphenated());
+                println!("Bytes:  {}", hex::encode(u.into_bytes()));
             }
-            println!("Base44: {b45}");
-            println!("UUID:   {}", u.hyphenated());
-            println!("Bytes:  {}", hex::encode(u.into_bytes()));
         }
-        Some("encode") => {
-            if args.len() < 3 {
-                eprintln!("encode requires an input");
-                std::process::exit(2);
-            }
-            match parse_uuid_input(&args[2]) {
-                Ok(bytes) => match encode_uuid_bytes(&bytes) {
-                    Ok(s) => {
-                        if quiet {
-                            println!("{s}");
-                        } else {
-                            println!("Base44: {s}");
-                        }
+        Commands::Encode { input, quiet } => match parse_uuid_input(&input) {
+            Ok(bytes) => match encode_uuid_bytes(&bytes) {
+                Ok(s) => {
+                    if quiet {
+                        println!("{s}");
+                    } else {
+                        println!("Base44: {s}");
                     }
-                    Err(e) => {
-                        eprintln!("Encode error: {e}");
-                        std::process::exit(2);
-                    }
-                },
+                }
                 Err(e) => {
-                    eprintln!("{e}");
+                    eprintln!("error: {e}");
                     std::process::exit(2);
                 }
-            }
-        }
-        Some("decode") => {
-            if args.len() < 3 {
-                eprintln!("decode requires a Base44 string or @-");
+            },
+            Err(e) => {
+                eprintln!("error: {e}");
                 std::process::exit(2);
             }
-            let input = if args[2].as_str() == "@-" {
+        },
+        Commands::Decode { input, quiet } => {
+            let input = if input == "@-" {
                 let mut s = String::new();
                 io::stdin().read_to_string(&mut s).unwrap();
                 s.trim().to_string()
             } else {
-                args[2].clone()
+                input
             };
             match decode_to_string(&input) {
                 Ok(uuid_str) => {
@@ -442,17 +403,20 @@ fn main() {
                     }
                 }
                 Err(e) => {
-                    eprintln!("{e}");
+                    eprintln!("error: {e}");
                     std::process::exit(2);
                 }
             }
         }
-        Some("server") => {
-            let server_args: Vec<String> = args[2..].to_vec();
-            run_server(&server_args);
+        #[cfg(feature = "server")]
+        Commands::Server(args) => {
+            run_server(args);
         }
-        _ => {
-            print_usage();
+        #[cfg(not(feature = "server"))]
+        Commands::Server {} => {
+            eprintln!("error: server feature not enabled");
+            eprintln!("rebuild with: cargo build --features server");
+            std::process::exit(2);
         }
     }
 }
