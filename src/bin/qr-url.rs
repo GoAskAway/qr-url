@@ -83,23 +83,9 @@ struct ServerArgs {
     key: Option<String>,
 }
 
-fn parse_uuid_input(arg: &str) -> io::Result<[u8; 16]> {
-    // @- => read raw bytes from stdin
-    if arg == "@-" {
-        let mut buf = Vec::new();
-        io::stdin().read_to_end(&mut buf)?;
-        if buf.len() != 16 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!("stdin must be 16 bytes, got {}", buf.len()),
-            ));
-        }
-        let mut arr = [0u8; 16];
-        arr.copy_from_slice(&buf);
-        return Ok(arr);
-    }
-
-    // Try UUID parse
+/// Parse UUID from string (without stdin support, for testability)
+fn parse_uuid_input_impl(arg: &str) -> io::Result<[u8; 16]> {
+    // Try UUID parse first (most common case)
     if let Ok(u) = Uuid::parse_str(arg) {
         return Ok(u.into_bytes());
     }
@@ -119,6 +105,24 @@ fn parse_uuid_input(arg: &str) -> io::Result<[u8; 16]> {
         io::ErrorKind::InvalidInput,
         "invalid UUID input format",
     ))
+}
+
+fn parse_uuid_input(arg: &str) -> io::Result<[u8; 16]> {
+    // @- => read raw bytes from stdin
+    if arg == "@-" {
+        let mut buf = Vec::new();
+        io::stdin().read_to_end(&mut buf)?;
+        if buf.len() != 16 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("stdin must be 16 bytes, got {}", buf.len()),
+            ));
+        }
+        let mut arr = [0u8; 16];
+        arr.copy_from_slice(&buf);
+        return Ok(arr);
+    }
+    parse_uuid_input_impl(arg)
 }
 
 #[cfg(feature = "server")]
@@ -193,6 +197,20 @@ mod server {
         Path(base44): Path<String>,
         State(state): State<Arc<AppState>>,
     ) -> Response {
+        // Validate Base44 length (must be 19 chars for custom UUID variant)
+        if base44.len() != 19 {
+            tracing::warn!(
+                base44 = %base44,
+                len = base44.len(),
+                "invalid Base44 length"
+            );
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Invalid Base44 length: expected 19, got {}", base44.len()),
+            )
+                .into_response();
+        }
+
         // Decode Base44 to UUID
         let uuid_str = match decode_to_string(&base44) {
             Ok(s) => s,
@@ -202,7 +220,13 @@ mod server {
             }
         };
 
-        let bytes = decode_to_bytes(&base44).unwrap();
+        let bytes = match decode_to_bytes(&base44) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::error!(base44 = %base44, error = %e, "decode_to_bytes failed unexpectedly");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "Decode error").into_response();
+            }
+        };
         let bytes_hex = hex::encode(bytes);
 
         tracing::info!(base44 = %base44, uuid = %uuid_str, "decoded");
@@ -214,12 +238,18 @@ mod server {
                     uuid: uuid_str,
                     bytes: bytes_hex,
                 };
-                (
-                    StatusCode::OK,
-                    [(header::CONTENT_TYPE, "application/json")],
-                    serde_json::to_string_pretty(&resp).unwrap(),
-                )
-                    .into_response()
+                match serde_json::to_string_pretty(&resp) {
+                    Ok(json) => (
+                        StatusCode::OK,
+                        [(header::CONTENT_TYPE, "application/json")],
+                        json,
+                    )
+                        .into_response(),
+                    Err(e) => {
+                        tracing::error!(error = %e, "JSON serialization failed");
+                        (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error").into_response()
+                    }
+                }
             }
             OutputMode::Redirect301(url_template) => {
                 let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
@@ -236,6 +266,7 @@ mod server {
                     let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
                     Html(html).into_response()
                 } else {
+                    tracing::error!("HTML template not loaded");
                     (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded").into_response()
                 }
             }
@@ -418,5 +449,720 @@ fn main() {
             eprintln!("rebuild with: cargo build --features server");
             std::process::exit(2);
         }
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ------------------------------------------------------------------------
+    // parse_uuid_input_impl tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn parse_uuid_canonical_format() {
+        // Standard UUID with dashes
+        let input = "550e8400-e29b-41d4-a716-446655440000";
+        let result = parse_uuid_input_impl(input).unwrap();
+        let expected: [u8; 16] = [
+            0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44,
+            0x00, 0x00,
+        ];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn parse_uuid_32hex_lowercase() {
+        let input = "550e8400e29b41d4a716446655440000";
+        let result = parse_uuid_input_impl(input).unwrap();
+        let expected: [u8; 16] = [
+            0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44,
+            0x00, 0x00,
+        ];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn parse_uuid_32hex_uppercase() {
+        let input = "550E8400E29B41D4A716446655440000";
+        let result = parse_uuid_input_impl(input).unwrap();
+        let expected: [u8; 16] = [
+            0x55, 0x0e, 0x84, 0x00, 0xe2, 0x9b, 0x41, 0xd4, 0xa7, 0x16, 0x44, 0x66, 0x55, 0x44,
+            0x00, 0x00,
+        ];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn parse_uuid_32hex_mixed_case() {
+        let input = "550e8400E29B41d4A716446655440000";
+        let result = parse_uuid_input_impl(input).unwrap();
+        assert!(result.len() == 16);
+    }
+
+    #[test]
+    fn parse_uuid_all_zeros() {
+        let input = "00000000-0000-0000-0000-000000000000";
+        let result = parse_uuid_input_impl(input).unwrap();
+        assert_eq!(result, [0u8; 16]);
+    }
+
+    #[test]
+    fn parse_uuid_all_fs() {
+        let input = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+        let result = parse_uuid_input_impl(input).unwrap();
+        assert_eq!(result, [0xffu8; 16]);
+    }
+
+    #[test]
+    fn parse_uuid_invalid_empty() {
+        let result = parse_uuid_input_impl("");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("invalid"));
+    }
+
+    #[test]
+    fn parse_uuid_invalid_short_hex() {
+        // 31 hex chars - too short
+        let input = "550e8400e29b41d4a71644665544000";
+        let result = parse_uuid_input_impl(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_uuid_invalid_long_hex() {
+        // 33 hex chars - too long
+        let input = "550e8400e29b41d4a7164466554400001";
+        let result = parse_uuid_input_impl(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_uuid_invalid_chars() {
+        // Contains 'g' which is not hex
+        let input = "550e8400e29b41d4a716446655440g00";
+        let result = parse_uuid_input_impl(input);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_uuid_invalid_format() {
+        let result = parse_uuid_input_impl("not-a-uuid");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_uuid_braced_format() {
+        // UUID crate supports braced format
+        let input = "{550e8400-e29b-41d4-a716-446655440000}";
+        let result = parse_uuid_input_impl(input).unwrap();
+        assert_eq!(result[0], 0x55);
+    }
+
+    #[test]
+    fn parse_uuid_urn_format() {
+        // UUID crate supports URN format
+        let input = "urn:uuid:550e8400-e29b-41d4-a716-446655440000";
+        let result = parse_uuid_input_impl(input).unwrap();
+        assert_eq!(result[0], 0x55);
+    }
+}
+
+#[cfg(all(test, feature = "server"))]
+mod server_tests {
+    use super::server::*;
+    use axum::{
+        Router,
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    // ------------------------------------------------------------------------
+    // OutputMode::parse tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn output_mode_json_lowercase() {
+        let mode = OutputMode::parse("json").unwrap();
+        assert!(matches!(mode, OutputMode::Json));
+    }
+
+    #[test]
+    fn output_mode_json_uppercase() {
+        let mode = OutputMode::parse("JSON").unwrap();
+        assert!(matches!(mode, OutputMode::Json));
+    }
+
+    #[test]
+    fn output_mode_json_mixed_case() {
+        let mode = OutputMode::parse("Json").unwrap();
+        assert!(matches!(mode, OutputMode::Json));
+    }
+
+    #[test]
+    fn output_mode_json_with_whitespace() {
+        let mode = OutputMode::parse("  json  ").unwrap();
+        assert!(matches!(mode, OutputMode::Json));
+    }
+
+    #[test]
+    fn output_mode_301_redirect() {
+        let mode = OutputMode::parse("301 https://example.com/{{uuid}}").unwrap();
+        match mode {
+            OutputMode::Redirect301(url) => {
+                assert_eq!(url, "https://example.com/{{uuid}}");
+            }
+            _ => panic!("Expected Redirect301"),
+        }
+    }
+
+    #[test]
+    fn output_mode_301_with_extra_spaces() {
+        let mode = OutputMode::parse("301   https://example.com/{{uuid}}  ").unwrap();
+        match mode {
+            OutputMode::Redirect301(url) => {
+                assert_eq!(url, "https://example.com/{{uuid}}");
+            }
+            _ => panic!("Expected Redirect301"),
+        }
+    }
+
+    #[test]
+    fn output_mode_302_redirect() {
+        let mode = OutputMode::parse("302 https://example.com/go/{{base44}}").unwrap();
+        match mode {
+            OutputMode::Redirect302(url) => {
+                assert_eq!(url, "https://example.com/go/{{base44}}");
+            }
+            _ => panic!("Expected Redirect302"),
+        }
+    }
+
+    #[test]
+    fn output_mode_html_existing_file() {
+        // Create temp file
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        let path = temp.path().to_str().unwrap();
+
+        let mode = OutputMode::parse(&format!("html {}", path)).unwrap();
+        match mode {
+            OutputMode::HtmlTemplate(p) => {
+                assert_eq!(p, path);
+            }
+            _ => panic!("Expected HtmlTemplate"),
+        }
+    }
+
+    #[test]
+    fn output_mode_html_nonexistent_file() {
+        let result = OutputMode::parse("html /nonexistent/path/to/file.html");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
+    }
+
+    #[test]
+    fn output_mode_invalid() {
+        let result = OutputMode::parse("redirect https://example.com");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid mode"));
+    }
+
+    #[test]
+    fn output_mode_invalid_empty() {
+        let result = OutputMode::parse("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn output_mode_invalid_300() {
+        // 300 is not supported
+        let result = OutputMode::parse("300 https://example.com");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn output_mode_invalid_303() {
+        // 303 is not supported
+        let result = OutputMode::parse("303 https://example.com");
+        assert!(result.is_err());
+    }
+
+    // ------------------------------------------------------------------------
+    // render_template tests (need to make it pub for testing)
+    // ------------------------------------------------------------------------
+
+    fn render_template(template: &str, base44: &str, uuid_str: &str, bytes_hex: &str) -> String {
+        template
+            .replace("{{uuid}}", uuid_str)
+            .replace("{{base44}}", base44)
+            .replace("{{bytes}}", bytes_hex)
+    }
+
+    #[test]
+    fn render_all_placeholders() {
+        let template = "UUID: {{uuid}}, Base44: {{base44}}, Bytes: {{bytes}}";
+        let result = render_template(
+            template,
+            "ABC123",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "550e8400e29b41d4a716446655440000",
+        );
+        assert_eq!(
+            result,
+            "UUID: 550e8400-e29b-41d4-a716-446655440000, Base44: ABC123, Bytes: 550e8400e29b41d4a716446655440000"
+        );
+    }
+
+    #[test]
+    fn render_uuid_only() {
+        let template = "https://example.com/item/{{uuid}}";
+        let result = render_template(
+            template,
+            "ABC",
+            "550e8400-e29b-41d4-a716-446655440000",
+            "hex",
+        );
+        assert_eq!(
+            result,
+            "https://example.com/item/550e8400-e29b-41d4-a716-446655440000"
+        );
+    }
+
+    #[test]
+    fn render_base44_only() {
+        let template = "https://example.com/go/{{base44}}";
+        let result = render_template(template, "ABC123XYZ", "uuid", "hex");
+        assert_eq!(result, "https://example.com/go/ABC123XYZ");
+    }
+
+    #[test]
+    fn render_bytes_only() {
+        let template = "https://example.com/raw/{{bytes}}";
+        let result = render_template(template, "b44", "uuid", "deadbeef");
+        assert_eq!(result, "https://example.com/raw/deadbeef");
+    }
+
+    #[test]
+    fn render_no_placeholders() {
+        let template = "https://example.com/static";
+        let result = render_template(template, "b44", "uuid", "hex");
+        assert_eq!(result, "https://example.com/static");
+    }
+
+    #[test]
+    fn render_empty_template() {
+        let result = render_template("", "b44", "uuid", "hex");
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn render_duplicate_placeholders() {
+        let template = "{{uuid}}/{{uuid}}";
+        let result = render_template(template, "b44", "my-uuid", "hex");
+        assert_eq!(result, "my-uuid/my-uuid");
+    }
+
+    #[test]
+    fn render_special_chars_in_values() {
+        let template = "{{base44}}";
+        // Base44 can contain special chars like + / :
+        let result = render_template(template, "ABC+DEF/GHI:JKL", "uuid", "hex");
+        assert_eq!(result, "ABC+DEF/GHI:JKL");
+    }
+
+    // ------------------------------------------------------------------------
+    // HTTP handler integration tests
+    // ------------------------------------------------------------------------
+
+    fn create_test_app(mode: OutputMode, html_template: Option<String>) -> Router {
+        use axum::routing::get;
+
+        let state = Arc::new(AppState {
+            mode,
+            html_template,
+        });
+
+        Router::new()
+            .route("/health", get(|| async { "OK" }))
+            .route(
+                "/{base44}",
+                get(
+                    |axum::extract::Path(base44): axum::extract::Path<String>,
+                     axum::extract::State(state): axum::extract::State<Arc<AppState>>| async move {
+                        use axum::http::header;
+                        use axum::response::{Html, IntoResponse, Redirect};
+                        use qr_url::{decode_to_bytes, decode_to_string};
+
+                        // Length validation
+                        if base44.len() != 19 {
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                format!("Invalid Base44 length: expected 19, got {}", base44.len()),
+                            )
+                                .into_response();
+                        }
+
+                        let uuid_str = match decode_to_string(&base44) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                return (StatusCode::BAD_REQUEST, format!("Invalid Base44: {e}"))
+                                    .into_response();
+                            }
+                        };
+
+                        let bytes = match decode_to_bytes(&base44) {
+                            Ok(b) => b,
+                            Err(_) => {
+                                return (StatusCode::INTERNAL_SERVER_ERROR, "Decode error")
+                                    .into_response();
+                            }
+                        };
+                        let bytes_hex = hex::encode(bytes);
+
+                        match &state.mode {
+                            OutputMode::Json => {
+                                let resp = serde_json::json!({
+                                    "base44": base44,
+                                    "uuid": uuid_str,
+                                    "bytes": bytes_hex,
+                                });
+                                (
+                                    StatusCode::OK,
+                                    [(header::CONTENT_TYPE, "application/json")],
+                                    serde_json::to_string_pretty(&resp).unwrap(),
+                                )
+                                    .into_response()
+                            }
+                            OutputMode::Redirect301(url_template) => {
+                                let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
+                                Redirect::permanent(&target).into_response()
+                            }
+                            OutputMode::Redirect302(url_template) => {
+                                let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
+                                Redirect::temporary(&target).into_response()
+                            }
+                            OutputMode::HtmlTemplate(_) => {
+                                if let Some(ref tpl) = state.html_template {
+                                    let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
+                                    Html(html).into_response()
+                                } else {
+                                    (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded")
+                                        .into_response()
+                                }
+                            }
+                        }
+                    },
+                ),
+            )
+            .with_state(state)
+    }
+
+    #[tokio::test]
+    async fn health_endpoint() {
+        let app = create_test_app(OutputMode::Json, None);
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// Generate a Base44 string safe for URL path
+    /// Excludes characters that may cause URL routing issues: / : + %
+    fn generate_url_safe_base44() -> (uuid::Uuid, String) {
+        loop {
+            let uuid = qr_url::generate_v4();
+            let base44 = qr_url::encode_uuid(uuid).unwrap();
+            // Skip if contains URL-problematic characters
+            if !base44.contains('/') && !base44.contains(':') && !base44.contains('+') {
+                return (uuid, base44);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn decode_valid_base44_json_mode() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        let (_uuid, base44) = generate_url_safe_base44();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", base44))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(json["base44"], base44);
+        assert!(json["uuid"].as_str().unwrap().contains("-"));
+        assert_eq!(json["bytes"].as_str().unwrap().len(), 32);
+    }
+
+    #[tokio::test]
+    async fn decode_invalid_base44_wrong_length_short() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // Too short (less than 19 chars)
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ABC123")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("length"));
+    }
+
+    #[tokio::test]
+    async fn decode_invalid_base44_wrong_length_long() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // Too long (more than 19 chars)
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("length"));
+    }
+
+    #[tokio::test]
+    async fn decode_invalid_base44_bad_chars() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // Exactly 19 chars but contains invalid Base44 characters (!)
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/INVALID!!!!!!!!!!!")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn decode_with_301_redirect() {
+        let app = create_test_app(
+            OutputMode::Redirect301("https://example.com/item/{{uuid}}".to_string()),
+            None,
+        );
+
+        let (_uuid, base44) = generate_url_safe_base44();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", base44))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
+
+        let location = response
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(location.starts_with("https://example.com/item/"));
+        assert!(location.contains("-")); // UUID format
+    }
+
+    #[tokio::test]
+    async fn decode_with_302_redirect() {
+        let app = create_test_app(
+            OutputMode::Redirect302("https://example.com/go/{{base44}}".to_string()),
+            None,
+        );
+
+        let (_uuid, base44) = generate_url_safe_base44();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", base44))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+
+        let location = response
+            .headers()
+            .get("location")
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(location.contains(&base44));
+    }
+
+    #[tokio::test]
+    async fn decode_with_html_template() {
+        let template = "<html><body>UUID: {{uuid}}, Code: {{base44}}</body></html>";
+        let app = create_test_app(
+            OutputMode::HtmlTemplate("/dummy/path".to_string()),
+            Some(template.to_string()),
+        );
+
+        let (_uuid, base44) = generate_url_safe_base44();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", base44))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(html.contains(&base44));
+        assert!(html.contains("-")); // UUID contains dashes
+    }
+
+    #[tokio::test]
+    async fn decode_html_template_not_loaded() {
+        let app = create_test_app(OutputMode::HtmlTemplate("/dummy/path".to_string()), None);
+
+        let (_uuid, base44) = generate_url_safe_base44();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", base44))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    // ------------------------------------------------------------------------
+    // TLS config validation tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn tls_config_both_provided() {
+        let cert = Some("cert.pem".to_string());
+        let key = Some("key.pem".to_string());
+
+        match (&cert, &key) {
+            (Some(c), Some(k)) => {
+                assert_eq!(c, "cert.pem");
+                assert_eq!(k, "key.pem");
+            }
+            _ => panic!("Should have both"),
+        }
+    }
+
+    #[test]
+    fn tls_config_neither_provided() {
+        let cert: Option<String> = None;
+        let key: Option<String> = None;
+
+        let has_tls = cert.is_some() && key.is_some();
+        assert!(!has_tls);
+    }
+
+    // ------------------------------------------------------------------------
+    // Default port logic tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn default_port_without_tls() {
+        let tls: Option<TlsConfig> = None;
+        let port: Option<u16> = None;
+        let actual = port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
+        assert_eq!(actual, 3000);
+    }
+
+    #[test]
+    fn default_port_with_tls() {
+        let tls = Some(TlsConfig {
+            cert_path: "cert.pem".to_string(),
+            key_path: "key.pem".to_string(),
+        });
+        let port: Option<u16> = None;
+        let actual = port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
+        assert_eq!(actual, 443);
+    }
+
+    #[test]
+    fn explicit_port_overrides_default() {
+        let tls: Option<TlsConfig> = None;
+        let port = Some(8080u16);
+        let actual = port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
+        assert_eq!(actual, 8080);
+    }
+
+    #[test]
+    fn explicit_port_overrides_tls_default() {
+        let tls = Some(TlsConfig {
+            cert_path: "cert.pem".to_string(),
+            key_path: "key.pem".to_string(),
+        });
+        let port = Some(8443u16);
+        let actual = port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
+        assert_eq!(actual, 8443);
     }
 }

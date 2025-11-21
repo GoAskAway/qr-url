@@ -19,7 +19,7 @@ server = ["tokio", "axum", "axum-server", "serde", "serde_json", "tracing", "tra
 uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
 thiserror = "2"
 hex = "0.4"
-qr-base44 = { git = "https://github.com/kookyleo/qr-base44.git", branch = "feat/optimal-bit-encoding" }
+qr-base44 = "0.1"
 clap = { version = "4", features = ["derive"] }
 
 # HTTP server (optional, for server subcommand)
@@ -36,6 +36,9 @@ wasm-bindgen = { version = "0.2" }
 
 [dev-dependencies]
 rand = "0.9"
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+hyper = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
