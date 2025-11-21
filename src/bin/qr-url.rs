@@ -194,27 +194,36 @@ mod server {
     }
 
     async fn handle_base44(
-        Path(raw_base44): Path<String>,
+        Path(raw): Path<String>,
         State(state): State<Arc<AppState>>,
     ) -> Response {
-        // Manually decode %2F → / (axum doesn't decode this for path segments)
-        // Other URL-encoded chars like %2B (+) and %3A (:) are decoded automatically
-        let base44 = raw_base44.replace("%2F", "/").replace("%2f", "/");
-
-        // Validate Base44 length (must be 19 chars for custom UUID variant)
-        if base44.len() != 19 {
-            tracing::warn!(
-                base44 = %base44,
-                raw = %raw_base44,
-                len = base44.len(),
-                "invalid Base44 length"
-            );
+        // Normalize input: raw Base44 (19 chars) or URL-encoded (>19 chars)
+        let base44 = if raw.len() == 19 {
+            raw
+        } else if raw.len() > 19 {
+            match urlencoding::decode(&raw) {
+                Ok(decoded) if decoded.len() == 19 => decoded.into_owned(),
+                Ok(decoded) => {
+                    tracing::warn!(raw = %raw, decoded_len = decoded.len(), "invalid Base44 length after decode");
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        format!("Invalid Base44 length: expected 19, got {}", decoded.len()),
+                    )
+                        .into_response();
+                }
+                Err(e) => {
+                    tracing::warn!(raw = %raw, error = %e, "URL decode failed");
+                    return (StatusCode::BAD_REQUEST, "Invalid URL encoding").into_response();
+                }
+            }
+        } else {
+            tracing::warn!(raw = %raw, len = raw.len(), "invalid Base44 length");
             return (
                 StatusCode::BAD_REQUEST,
-                format!("Invalid Base44 length: expected 19, got {}", base44.len()),
+                format!("Invalid Base44 length: expected 19, got {}", raw.len()),
             )
                 .into_response();
-        }
+        };
 
         // Decode Base44 to UUID
         let uuid_str = match decode_to_string(&base44) {
@@ -787,7 +796,91 @@ mod server_tests {
     // ------------------------------------------------------------------------
 
     fn create_test_app(mode: OutputMode, html_template: Option<String>) -> Router {
-        use axum::routing::get;
+        use axum::{
+            extract::{Path, State},
+            http::header,
+            response::{Html, IntoResponse, Redirect, Response},
+            routing::get,
+        };
+        use qr_url::{decode_to_bytes, decode_to_string};
+
+        async fn test_handler(
+            Path(raw): Path<String>,
+            State(state): State<Arc<AppState>>,
+        ) -> Response {
+            // Normalize: raw (19 chars) or URL-encoded (>19 chars)
+            let base44 = if raw.len() == 19 {
+                raw
+            } else if raw.len() > 19 {
+                match urlencoding::decode(&raw) {
+                    Ok(decoded) if decoded.len() == 19 => decoded.into_owned(),
+                    Ok(decoded) => {
+                        return (
+                            StatusCode::BAD_REQUEST,
+                            format!("Invalid Base44 length: expected 19, got {}", decoded.len()),
+                        )
+                            .into_response();
+                    }
+                    Err(_) => {
+                        return (StatusCode::BAD_REQUEST, "Invalid URL encoding").into_response();
+                    }
+                }
+            } else {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid Base44 length: expected 19, got {}", raw.len()),
+                )
+                    .into_response();
+            };
+
+            let uuid_str = match decode_to_string(&base44) {
+                Ok(s) => s,
+                Err(e) => {
+                    return (StatusCode::BAD_REQUEST, format!("Invalid Base44: {e}"))
+                        .into_response();
+                }
+            };
+
+            let bytes = match decode_to_bytes(&base44) {
+                Ok(b) => b,
+                Err(_) => {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, "Decode error").into_response();
+                }
+            };
+            let bytes_hex = hex::encode(bytes);
+
+            match &state.mode {
+                OutputMode::Json => {
+                    let resp = serde_json::json!({
+                        "base44": base44,
+                        "uuid": uuid_str,
+                        "bytes": bytes_hex,
+                    });
+                    (
+                        StatusCode::OK,
+                        [(header::CONTENT_TYPE, "application/json")],
+                        serde_json::to_string_pretty(&resp).unwrap(),
+                    )
+                        .into_response()
+                }
+                OutputMode::Redirect301(url_template) => {
+                    let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
+                    Redirect::permanent(&target).into_response()
+                }
+                OutputMode::Redirect302(url_template) => {
+                    let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
+                    Redirect::temporary(&target).into_response()
+                }
+                OutputMode::HtmlTemplate(_) => {
+                    if let Some(ref tpl) = state.html_template {
+                        let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
+                        Html(html).into_response()
+                    } else {
+                        (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded").into_response()
+                    }
+                }
+            }
+        }
 
         let state = Arc::new(AppState {
             mode,
@@ -796,79 +889,7 @@ mod server_tests {
 
         Router::new()
             .route("/health", get(|| async { "OK" }))
-            .route(
-                "/{base44}",
-                get(
-                    |axum::extract::Path(raw_base44): axum::extract::Path<String>,
-                     axum::extract::State(state): axum::extract::State<Arc<AppState>>| async move {
-                        use axum::http::header;
-                        use axum::response::{Html, IntoResponse, Redirect};
-                        use qr_url::{decode_to_bytes, decode_to_string};
-
-                        // Manually decode %2F → / (axum doesn't decode this for path segments)
-                        let base44 = raw_base44.replace("%2F", "/").replace("%2f", "/");
-
-                        // Length validation
-                        if base44.len() != 19 {
-                            return (
-                                StatusCode::BAD_REQUEST,
-                                format!("Invalid Base44 length: expected 19, got {}", base44.len()),
-                            )
-                                .into_response();
-                        }
-
-                        let uuid_str = match decode_to_string(&base44) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                return (StatusCode::BAD_REQUEST, format!("Invalid Base44: {e}"))
-                                    .into_response();
-                            }
-                        };
-
-                        let bytes = match decode_to_bytes(&base44) {
-                            Ok(b) => b,
-                            Err(_) => {
-                                return (StatusCode::INTERNAL_SERVER_ERROR, "Decode error")
-                                    .into_response();
-                            }
-                        };
-                        let bytes_hex = hex::encode(bytes);
-
-                        match &state.mode {
-                            OutputMode::Json => {
-                                let resp = serde_json::json!({
-                                    "base44": base44,
-                                    "uuid": uuid_str,
-                                    "bytes": bytes_hex,
-                                });
-                                (
-                                    StatusCode::OK,
-                                    [(header::CONTENT_TYPE, "application/json")],
-                                    serde_json::to_string_pretty(&resp).unwrap(),
-                                )
-                                    .into_response()
-                            }
-                            OutputMode::Redirect301(url_template) => {
-                                let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
-                                Redirect::permanent(&target).into_response()
-                            }
-                            OutputMode::Redirect302(url_template) => {
-                                let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
-                                Redirect::temporary(&target).into_response()
-                            }
-                            OutputMode::HtmlTemplate(_) => {
-                                if let Some(ref tpl) = state.html_template {
-                                    let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
-                                    Html(html).into_response()
-                                } else {
-                                    (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded")
-                                        .into_response()
-                                }
-                            }
-                        }
-                    },
-                ),
-            )
+            .route("/{base44}", get(test_handler))
             .with_state(state)
     }
 
@@ -887,40 +908,37 @@ mod server_tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
-    /// Build a request - Base44 characters are passed as-is
-    /// Note: '/' in path will cause routing issues in tests, but in production
-    /// clients should URL-encode such characters and axum will decode them.
+    /// Build a request with URL-encoded Base44
+    /// All special chars are encoded, handler will decode them
     fn build_base44_request(base44: &str) -> Request<Body> {
-        // For test simplicity, we skip Base44 strings containing '/'
-        // In production, clients would URL-encode '/' as %2F
-        assert!(
-            !base44.contains('/'),
-            "Test helper doesn't support '/' - use a different UUID"
-        );
+        let encoded = urlencoding::encode(base44);
         Request::builder()
-            .uri(format!("/{}", base44))
+            .uri(format!("/{}", encoded))
             .body(Body::empty())
             .unwrap()
     }
 
-    /// Generate a Base44 without '/' for testing (axum routing limitation)
-    fn generate_test_base44() -> String {
-        loop {
-            let uuid = qr_url::generate_v4();
-            let base44 = qr_url::encode_uuid(uuid).unwrap();
-            // '/' causes routing issues in test environment
-            if !base44.contains('/') {
-                return base44;
-            }
-        }
+    /// Known test Base44 values (pre-generated, stable)
+    /// These avoid random generation race conditions in concurrent tests
+    const TEST_BASE44_VALUES: &[&str] = &[
+        "DPN.M2YT.%YDYX+OYZV", // 611f75c3-4fc2-41c2-aee6-5d5ad69ddf41
+        "G96+RDOEF+:I3F6J4RZ", // 717f31e8-e58e-41c2-aea8-a036a576ca39
+        "O5297/8PQ+J609-Z$K:", // 6c30c039-89a0-41c2-ae5f-2b641ee3a917
+        "B2A/MHJ-YA-%H%BUQ3J", // 76a9f155-710f-41c2-ae69-ae4412f26956
+        "G0VWCXC*/51RPWDRTXS", // 0d312c41-ceab-41c2-aea4-214ed1f05e59
+    ];
+
+    /// Get a test Base44 value by index (wraps around)
+    fn get_test_base44(index: usize) -> &'static str {
+        TEST_BASE44_VALUES[index % TEST_BASE44_VALUES.len()]
     }
 
     #[tokio::test]
     async fn decode_valid_base44_json_mode() {
         let app = create_test_app(OutputMode::Json, None);
-        let base44 = generate_test_base44();
+        let base44 = get_test_base44(0);
 
-        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
+        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -934,18 +952,18 @@ mod server_tests {
         assert_eq!(json["bytes"].as_str().unwrap().len(), 32);
     }
 
-    /// Test: axum Path extractor DOES auto-decode URL-encoded chars
-    /// Browser sends /%41 → axum decodes to /A → handler receives "A"
+    /// Test: handler decodes URL-encoded Base44 when length > 19
+    /// Browser sends URL-encoded Base44 → handler decodes → processes original
     #[tokio::test]
-    async fn url_encoding_is_auto_decoded() {
+    async fn url_encoding_decoded_by_handler() {
         let app = create_test_app(OutputMode::Json, None);
 
-        // A valid 19-char Base44 without '/'
-        let base44 = generate_test_base44();
-        assert_eq!(base44.len(), 19);
+        // Use a known Base44 WITH '/' to test %2F decoding
+        // "O5297/8PQ+J609-Z$K:" contains /
+        let base44_with_slash = "O5297/8PQ+J609-Z$K:";
 
-        // URL-encode some chars - simulates browser behavior
-        let encoded = base44.replace('A', "%41"); // 'A' → '%41'
+        // URL-encode the Base44 (simulates what browsers send)
+        let encoded = urlencoding::encode(base44_with_slash);
 
         let response = app
             .oneshot(
@@ -957,7 +975,7 @@ mod server_tests {
             .await
             .unwrap();
 
-        // axum decodes %41 back to A, so handler receives original Base44
+        // Handler decodes URL-encoded input (length > 19)
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -965,27 +983,21 @@ mod server_tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-        // Response contains the decoded (original) Base44
-        assert_eq!(json["base44"], base44);
+        // Response contains the original Base44
+        assert_eq!(json["base44"], base44_with_slash);
     }
 
-    /// Test: URL-encoded '/' (%2F) is manually decoded by server
-    /// axum doesn't decode %2F automatically, so we do it in the handler
+    /// Test: URL-encoded '+' and ':' are decoded correctly
     #[tokio::test]
-    async fn url_encoded_slash_is_manually_decoded() {
+    async fn url_encoding_special_chars_decoded() {
         let app = create_test_app(OutputMode::Json, None);
 
-        // Generate a Base44 WITH '/' to test %2F decoding
-        let base44_with_slash = loop {
-            let uuid = qr_url::generate_v4();
-            let b44 = qr_url::encode_uuid(uuid).unwrap();
-            if b44.contains('/') {
-                break b44;
-            }
-        };
+        // Use a known Base44 with '+' and ':' chars
+        // "G96+RDOEF+:I3F6J4RZ" contains + and :
+        let base44_special = "G96+RDOEF+:I3F6J4RZ";
 
-        // URL-encode the '/' as %2F (what browsers do)
-        let encoded = base44_with_slash.replace('/', "%2F");
+        // URL-encode all special chars
+        let encoded = urlencoding::encode(base44_special);
 
         let response = app
             .oneshot(
@@ -997,7 +1009,6 @@ mod server_tests {
             .await
             .unwrap();
 
-        // Server manually decodes %2F → /, so this should work
         assert_eq!(response.status(), StatusCode::OK);
 
         let body = axum::body::to_bytes(response.into_body(), usize::MAX)
@@ -1005,8 +1016,75 @@ mod server_tests {
             .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
 
-        // Response contains the original Base44 with '/'
-        assert_eq!(json["base44"], base44_with_slash);
+        assert_eq!(json["base44"], base44_special);
+    }
+
+    /// Test: '%' character in Base44 is correctly handled when URL-encoded
+    /// '%' is encoded as %25, handler decodes it back to '%'
+    #[tokio::test]
+    async fn url_encoding_percent_char_decoded() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // Use a known Base44 with '%' char
+        // "DPN.M2YT.%YDYX+OYZV" contains %
+        let base44_with_percent = "DPN.M2YT.%YDYX+OYZV";
+        assert!(base44_with_percent.contains('%'));
+
+        // URL-encode: % becomes %25
+        let encoded = urlencoding::encode(base44_with_percent);
+        assert!(encoded.contains("%25")); // % → %25
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", encoded))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Response contains the original Base44 with '%'
+        assert_eq!(json["base44"], base44_with_percent);
+    }
+
+    /// Test: raw Base44 with '%' works when NOT URL-encoded
+    /// urlencoding::decode preserves invalid %XX sequences (e.g., %YD is not valid hex)
+    #[tokio::test]
+    async fn raw_base44_with_percent_preserved() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // Raw Base44 containing % followed by non-hex chars
+        // %YD is not a valid URL encoding sequence, so it stays as-is
+        let raw_base44 = "DPN.M2YT.%YDYX+OYZV";
+
+        // Send raw (not URL-encoded) - note: + is kept as-is in path
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", raw_base44))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // %YD is preserved because it's not a valid percent-encoding sequence
+        assert_eq!(json["base44"], raw_base44);
     }
 
     #[tokio::test]
@@ -1082,9 +1160,9 @@ mod server_tests {
             None,
         );
 
-        let base44 = generate_test_base44();
+        let base44 = get_test_base44(1);
 
-        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
+        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
 
@@ -1105,9 +1183,9 @@ mod server_tests {
             None,
         );
 
-        let base44 = generate_test_base44();
+        let base44 = get_test_base44(2);
 
-        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
+        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
 
@@ -1117,7 +1195,7 @@ mod server_tests {
             .unwrap()
             .to_str()
             .unwrap();
-        assert!(location.contains(&base44));
+        assert!(location.contains(base44));
     }
 
     #[tokio::test]
@@ -1128,9 +1206,9 @@ mod server_tests {
             Some(template.to_string()),
         );
 
-        let base44 = generate_test_base44();
+        let base44 = get_test_base44(3);
 
-        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
+        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -1139,7 +1217,7 @@ mod server_tests {
             .unwrap();
         let html = String::from_utf8(body.to_vec()).unwrap();
 
-        assert!(html.contains(&base44));
+        assert!(html.contains(base44));
         assert!(html.contains("-")); // UUID contains dashes
     }
 
@@ -1147,9 +1225,9 @@ mod server_tests {
     async fn decode_html_template_not_loaded() {
         let app = create_test_app(OutputMode::HtmlTemplate("/dummy/path".to_string()), None);
 
-        let base44 = generate_test_base44();
+        let base44 = get_test_base44(4);
 
-        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
+        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
