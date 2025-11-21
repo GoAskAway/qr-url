@@ -13,7 +13,7 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 default = []
-server = ["tokio", "axum", "axum-server", "serde", "serde_json", "tracing", "tracing-subscriber", "urlencoding"]
+server = ["tokio", "serde", "serde_json", "tracing", "tracing-subscriber", "urlencoding", "tokio-rustls", "rustls-pemfile"]
 
 [dependencies]
 uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
@@ -24,8 +24,8 @@ clap = { version = "4", features = ["derive"] }
 
 # HTTP server (optional, for server subcommand)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"], optional = true }
-axum = { version = "0.8", optional = true }
-axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+rustls-pemfile = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 tracing = { version = "0.1", optional = true }
@@ -38,8 +38,6 @@ wasm-bindgen = { version = "0.2" }
 [dev-dependencies]
 rand = "0.9"
 tempfile = "3"
-tower = { version = "0.5", features = ["util"] }
-hyper = "1"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }

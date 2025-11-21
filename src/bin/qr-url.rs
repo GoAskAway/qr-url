@@ -127,16 +127,11 @@ fn parse_uuid_input(arg: &str) -> io::Result<[u8; 16]> {
 
 #[cfg(feature = "server")]
 mod server {
-    use axum::{
-        Router,
-        extract::{Path, State},
-        http::{StatusCode, header},
-        response::{Html, IntoResponse, Redirect, Response},
-        routing::get,
-    };
     use qr_url::{decode_to_bytes, decode_to_string};
     use serde::Serialize;
     use std::sync::Arc;
+    use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
 
     /// Output mode parsed from --mode argument
     #[derive(Debug, Clone)]
@@ -176,7 +171,7 @@ mod server {
     #[derive(Clone)]
     pub struct AppState {
         pub mode: OutputMode,
-        pub html_template: Option<String>, // Cached HTML template content
+        pub html_template: Option<String>,
     }
 
     #[derive(Serialize)]
@@ -193,36 +188,141 @@ mod server {
             .replace("{{bytes}}", bytes_hex)
     }
 
-    async fn handle_base44(
-        Path(raw): Path<String>,
-        State(state): State<Arc<AppState>>,
-    ) -> Response {
+    /// HTTP response builder
+    struct HttpResponse {
+        status: u16,
+        status_text: &'static str,
+        headers: Vec<(String, String)>,
+        body: String,
+    }
+
+    impl HttpResponse {
+        fn new(status: u16, status_text: &'static str) -> Self {
+            Self {
+                status,
+                status_text,
+                headers: Vec::new(),
+                body: String::new(),
+            }
+        }
+
+        fn header(mut self, name: &str, value: &str) -> Self {
+            self.headers.push((name.to_string(), value.to_string()));
+            self
+        }
+
+        fn body(mut self, body: String) -> Self {
+            self.body = body;
+            self
+        }
+
+        fn build(self) -> Vec<u8> {
+            let mut response = format!("HTTP/1.1 {} {}\r\n", self.status, self.status_text);
+            for (name, value) in &self.headers {
+                response.push_str(&format!("{}: {}\r\n", name, value));
+            }
+            response.push_str(&format!("Content-Length: {}\r\n", self.body.len()));
+            response.push_str("Connection: close\r\n");
+            response.push_str("\r\n");
+            response.push_str(&self.body);
+            response.into_bytes()
+        }
+
+        fn ok() -> Self {
+            Self::new(200, "OK")
+        }
+
+        fn bad_request() -> Self {
+            Self::new(400, "Bad Request")
+        }
+
+        fn not_found() -> Self {
+            Self::new(404, "Not Found")
+        }
+
+        fn internal_error() -> Self {
+            Self::new(500, "Internal Server Error")
+        }
+
+        fn redirect(status: u16, location: &str) -> Self {
+            let status_text = if status == 301 {
+                "Moved Permanently"
+            } else {
+                "Found"
+            };
+            Self::new(status, status_text).header("Location", location)
+        }
+    }
+
+    /// Parse raw HTTP request path (preserves all characters including //)
+    fn parse_request_path(request_line: &str) -> Option<String> {
+        // Format: "GET /path HTTP/1.1"
+        let parts: Vec<&str> = request_line.splitn(3, ' ').collect();
+        if parts.len() >= 2 && parts[0] == "GET" {
+            Some(parts[1].to_string())
+        } else {
+            None
+        }
+    }
+
+    /// Handle a single HTTP request
+    pub async fn handle_request(raw_path: &str, state: &AppState) -> Vec<u8> {
+        // Health check
+        if raw_path == "/health" {
+            return HttpResponse::ok()
+                .header("Content-Type", "text/plain")
+                .body("OK".to_string())
+                .build();
+        }
+
+        // Extract base44 from path (skip leading /)
+        // Path could be "/ABC" or "//ABC" (when Base44 starts with /)
+        let raw = match raw_path.strip_prefix('/') {
+            Some(r) if !r.is_empty() => r,
+            _ => {
+                return HttpResponse::not_found()
+                    .body("Not Found".to_string())
+                    .build();
+            }
+        };
+
+        // Handle //ABC case: if raw starts with /, it means original Base44 starts with /
+        // We keep the leading / as part of the Base44
+        // raw = "/ABC..." means path was "//ABC..."
+
         // Normalize input: raw Base44 (19 chars) or URL-encoded (>19 chars)
         let base44 = if raw.len() == 19 {
-            raw
+            raw.to_string()
         } else if raw.len() > 19 {
-            match urlencoding::decode(&raw) {
+            match urlencoding::decode(raw) {
                 Ok(decoded) if decoded.len() == 19 => decoded.into_owned(),
                 Ok(decoded) => {
                     tracing::warn!(raw = %raw, decoded_len = decoded.len(), "invalid Base44 length after decode");
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        format!("Invalid Base44 length: expected 19, got {}", decoded.len()),
-                    )
-                        .into_response();
+                    return HttpResponse::bad_request()
+                        .header("Content-Type", "text/plain")
+                        .body(format!(
+                            "Invalid Base44 length: expected 19, got {}",
+                            decoded.len()
+                        ))
+                        .build();
                 }
                 Err(e) => {
                     tracing::warn!(raw = %raw, error = %e, "URL decode failed");
-                    return (StatusCode::BAD_REQUEST, "Invalid URL encoding").into_response();
+                    return HttpResponse::bad_request()
+                        .header("Content-Type", "text/plain")
+                        .body("Invalid URL encoding".to_string())
+                        .build();
                 }
             }
         } else {
             tracing::warn!(raw = %raw, len = raw.len(), "invalid Base44 length");
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Invalid Base44 length: expected 19, got {}", raw.len()),
-            )
-                .into_response();
+            return HttpResponse::bad_request()
+                .header("Content-Type", "text/plain")
+                .body(format!(
+                    "Invalid Base44 length: expected 19, got {}",
+                    raw.len()
+                ))
+                .build();
         };
 
         // Decode Base44 to UUID
@@ -230,15 +330,20 @@ mod server {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!(base44 = %base44, error = %e, "decode failed");
-                return (StatusCode::BAD_REQUEST, format!("Invalid Base44: {e}")).into_response();
+                return HttpResponse::bad_request()
+                    .header("Content-Type", "text/plain")
+                    .body(format!("Invalid Base44: {e}"))
+                    .build();
             }
         };
 
         let bytes = match decode_to_bytes(&base44) {
             Ok(b) => b,
             Err(e) => {
-                tracing::error!(base44 = %base44, error = %e, "decode_to_bytes failed unexpectedly");
-                return (StatusCode::INTERNAL_SERVER_ERROR, "Decode error").into_response();
+                tracing::error!(base44 = %base44, error = %e, "decode_to_bytes failed");
+                return HttpResponse::internal_error()
+                    .body("Decode error".to_string())
+                    .build();
             }
         };
         let bytes_hex = hex::encode(bytes);
@@ -253,47 +358,118 @@ mod server {
                     bytes: bytes_hex,
                 };
                 match serde_json::to_string_pretty(&resp) {
-                    Ok(json) => (
-                        StatusCode::OK,
-                        [(header::CONTENT_TYPE, "application/json")],
-                        json,
-                    )
-                        .into_response(),
+                    Ok(json) => HttpResponse::ok()
+                        .header("Content-Type", "application/json")
+                        .body(json)
+                        .build(),
                     Err(e) => {
                         tracing::error!(error = %e, "JSON serialization failed");
-                        (StatusCode::INTERNAL_SERVER_ERROR, "Serialization error").into_response()
+                        HttpResponse::internal_error()
+                            .body("Serialization error".to_string())
+                            .build()
                     }
                 }
             }
             OutputMode::Redirect301(url_template) => {
                 let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
                 tracing::info!(target = %target, "redirecting 301");
-                Redirect::permanent(&target).into_response()
+                HttpResponse::redirect(301, &target).build()
             }
             OutputMode::Redirect302(url_template) => {
                 let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
                 tracing::info!(target = %target, "redirecting 302");
-                Redirect::temporary(&target).into_response()
+                HttpResponse::redirect(302, &target).build()
             }
             OutputMode::HtmlTemplate(_) => {
                 if let Some(ref tpl) = state.html_template {
                     let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
-                    Html(html).into_response()
+                    HttpResponse::ok()
+                        .header("Content-Type", "text/html; charset=utf-8")
+                        .body(html)
+                        .build()
                 } else {
                     tracing::error!("HTML template not loaded");
-                    (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded").into_response()
+                    HttpResponse::internal_error()
+                        .body("Template not loaded".to_string())
+                        .build()
                 }
             }
         }
     }
 
-    async fn health() -> &'static str {
-        "OK"
+    /// Handle a connection (generic over stream type for HTTP/HTTPS)
+    async fn handle_connection<S>(stream: S, state: Arc<AppState>)
+    where
+        S: AsyncBufRead + AsyncWrite + Unpin,
+    {
+        let (reader, mut writer) = tokio::io::split(stream);
+        let mut reader = BufReader::new(reader);
+        let mut request_line = String::new();
+
+        // Read the request line
+        if reader.read_line(&mut request_line).await.is_err() {
+            return;
+        }
+
+        // Parse path from request
+        let response = if let Some(path) = parse_request_path(request_line.trim()) {
+            handle_request(&path, &state).await
+        } else {
+            HttpResponse::bad_request()
+                .body("Bad Request".to_string())
+                .build()
+        };
+
+        // Drain remaining headers (we don't need them)
+        let mut line = String::new();
+        while reader.read_line(&mut line).await.is_ok() {
+            if line.trim().is_empty() {
+                break;
+            }
+            line.clear();
+        }
+
+        // Send response
+        let _ = writer.write_all(&response).await;
     }
 
     pub struct TlsConfig {
         pub cert_path: String,
         pub key_path: String,
+    }
+
+    fn load_tls_config(cfg: &TlsConfig) -> Result<Arc<tokio_rustls::rustls::ServerConfig>, String> {
+        use std::fs::File;
+        use std::io::BufReader as StdBufReader;
+        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+
+        // Load certificates
+        let cert_file = File::open(&cfg.cert_path)
+            .map_err(|e| format!("Failed to open cert file '{}': {}", cfg.cert_path, e))?;
+        let mut cert_reader = StdBufReader::new(cert_file);
+        let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut cert_reader)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Failed to parse certificates: {e}"))?;
+
+        if certs.is_empty() {
+            return Err("No certificates found in cert file".to_string());
+        }
+
+        // Load private key
+        let key_file = File::open(&cfg.key_path)
+            .map_err(|e| format!("Failed to open key file '{}': {}", cfg.key_path, e))?;
+        let mut key_reader = StdBufReader::new(key_file);
+        let key: PrivateKeyDer<'static> = rustls_pemfile::private_key(&mut key_reader)
+            .map_err(|e| format!("Failed to parse private key: {e}"))?
+            .ok_or("No private key found in key file")?;
+
+        // Build server config
+        let config = tokio_rustls::rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)
+            .map_err(|e| format!("Failed to build TLS config: {e}"))?;
+
+        Ok(Arc::new(config))
     }
 
     pub async fn run(bind: &str, port: u16, mode: OutputMode, tls: Option<TlsConfig>) {
@@ -325,37 +501,60 @@ mod server {
             html_template,
         });
 
-        let app = Router::new()
-            .route("/health", get(health))
-            .route("/{base44}", get(handle_base44))
-            .with_state(state);
-
         let addr = format!("{bind}:{port}");
+        let listener = TcpListener::bind(&addr).await.unwrap_or_else(|e| {
+            eprintln!("Failed to bind to {addr}: {e}");
+            std::process::exit(2);
+        });
 
         if let Some(tls_cfg) = tls {
-            tracing::info!(addr = %addr, mode = ?mode, "starting HTTPS server");
-
-            let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(
-                &tls_cfg.cert_path,
-                &tls_cfg.key_path,
-            )
-            .await
-            .unwrap_or_else(|e| {
-                eprintln!("Failed to load TLS config: {e}");
-                eprintln!("  cert: {}", tls_cfg.cert_path);
-                eprintln!("  key: {}", tls_cfg.key_path);
+            // HTTPS mode
+            let tls_config = load_tls_config(&tls_cfg).unwrap_or_else(|e| {
+                eprintln!("{e}");
                 std::process::exit(2);
             });
+            let acceptor = tokio_rustls::TlsAcceptor::from(tls_config);
 
-            axum_server::bind_rustls(addr.parse().unwrap(), rustls_config)
-                .serve(app.into_make_service())
-                .await
-                .unwrap();
+            tracing::info!(addr = %addr, mode = ?mode, "starting HTTPS server");
+
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _)) => {
+                        let acceptor = acceptor.clone();
+                        let state = Arc::clone(&state);
+                        tokio::spawn(async move {
+                            match acceptor.accept(stream).await {
+                                Ok(tls_stream) => {
+                                    handle_connection(BufReader::new(tls_stream), state).await;
+                                }
+                                Err(e) => {
+                                    tracing::warn!(error = %e, "TLS handshake failed");
+                                }
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "accept failed");
+                    }
+                }
+            }
         } else {
+            // HTTP mode
             tracing::info!(addr = %addr, mode = ?mode, "starting HTTP server");
 
-            let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-            axum::serve(listener, app).await.unwrap();
+            loop {
+                match listener.accept().await {
+                    Ok((stream, _)) => {
+                        let state = Arc::clone(&state);
+                        tokio::spawn(async move {
+                            handle_connection(BufReader::new(stream), state).await;
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "accept failed");
+                    }
+                }
+            }
         }
     }
 }
@@ -590,13 +789,6 @@ mod tests {
 #[cfg(all(test, feature = "server"))]
 mod server_tests {
     use super::server::*;
-    use axum::{
-        Router,
-        body::Body,
-        http::{Request, StatusCode},
-    };
-    use std::sync::Arc;
-    use tower::ServiceExt;
 
     // ------------------------------------------------------------------------
     // OutputMode::parse tests
@@ -792,134 +984,17 @@ mod server_tests {
     }
 
     // ------------------------------------------------------------------------
-    // HTTP handler integration tests
+    // HTTP handler integration tests (using handle_request directly)
     // ------------------------------------------------------------------------
 
-    fn create_test_app(mode: OutputMode, html_template: Option<String>) -> Router {
-        use axum::{
-            extract::{Path, State},
-            http::header,
-            response::{Html, IntoResponse, Redirect, Response},
-            routing::get,
-        };
-        use qr_url::{decode_to_bytes, decode_to_string};
-
-        async fn test_handler(
-            Path(raw): Path<String>,
-            State(state): State<Arc<AppState>>,
-        ) -> Response {
-            // Normalize: raw (19 chars) or URL-encoded (>19 chars)
-            let base44 = if raw.len() == 19 {
-                raw
-            } else if raw.len() > 19 {
-                match urlencoding::decode(&raw) {
-                    Ok(decoded) if decoded.len() == 19 => decoded.into_owned(),
-                    Ok(decoded) => {
-                        return (
-                            StatusCode::BAD_REQUEST,
-                            format!("Invalid Base44 length: expected 19, got {}", decoded.len()),
-                        )
-                            .into_response();
-                    }
-                    Err(_) => {
-                        return (StatusCode::BAD_REQUEST, "Invalid URL encoding").into_response();
-                    }
-                }
-            } else {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    format!("Invalid Base44 length: expected 19, got {}", raw.len()),
-                )
-                    .into_response();
-            };
-
-            let uuid_str = match decode_to_string(&base44) {
-                Ok(s) => s,
-                Err(e) => {
-                    return (StatusCode::BAD_REQUEST, format!("Invalid Base44: {e}"))
-                        .into_response();
-                }
-            };
-
-            let bytes = match decode_to_bytes(&base44) {
-                Ok(b) => b,
-                Err(_) => {
-                    return (StatusCode::INTERNAL_SERVER_ERROR, "Decode error").into_response();
-                }
-            };
-            let bytes_hex = hex::encode(bytes);
-
-            match &state.mode {
-                OutputMode::Json => {
-                    let resp = serde_json::json!({
-                        "base44": base44,
-                        "uuid": uuid_str,
-                        "bytes": bytes_hex,
-                    });
-                    (
-                        StatusCode::OK,
-                        [(header::CONTENT_TYPE, "application/json")],
-                        serde_json::to_string_pretty(&resp).unwrap(),
-                    )
-                        .into_response()
-                }
-                OutputMode::Redirect301(url_template) => {
-                    let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
-                    Redirect::permanent(&target).into_response()
-                }
-                OutputMode::Redirect302(url_template) => {
-                    let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
-                    Redirect::temporary(&target).into_response()
-                }
-                OutputMode::HtmlTemplate(_) => {
-                    if let Some(ref tpl) = state.html_template {
-                        let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
-                        Html(html).into_response()
-                    } else {
-                        (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded").into_response()
-                    }
-                }
-            }
-        }
-
-        let state = Arc::new(AppState {
+    fn create_test_state(mode: OutputMode, html_template: Option<String>) -> AppState {
+        AppState {
             mode,
             html_template,
-        });
-
-        Router::new()
-            .route("/health", get(|| async { "OK" }))
-            .route("/{base44}", get(test_handler))
-            .with_state(state)
-    }
-
-    #[tokio::test]
-    async fn health_endpoint() {
-        let app = create_test_app(OutputMode::Json, None);
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/health")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    /// Build a request with URL-encoded Base44
-    /// All special chars are encoded, handler will decode them
-    fn build_base44_request(base44: &str) -> Request<Body> {
-        let encoded = urlencoding::encode(base44);
-        Request::builder()
-            .uri(format!("/{}", encoded))
-            .body(Body::empty())
-            .unwrap()
+        }
     }
 
     /// Known test Base44 values (pre-generated, stable)
-    /// These avoid random generation race conditions in concurrent tests
     const TEST_BASE44_VALUES: &[&str] = &[
         "DPN.M2YT.%YDYX+OYZV", // 611f75c3-4fc2-41c2-aee6-5d5ad69ddf41
         "G96+RDOEF+:I3F6J4RZ", // 717f31e8-e58e-41c2-aea8-a036a576ca39
@@ -928,466 +1003,304 @@ mod server_tests {
         "G0VWCXC*/51RPWDRTXS", // 0d312c41-ceab-41c2-aea4-214ed1f05e59
     ];
 
-    /// Get a test Base44 value by index (wraps around)
     fn get_test_base44(index: usize) -> &'static str {
         TEST_BASE44_VALUES[index % TEST_BASE44_VALUES.len()]
     }
 
+    /// Parse HTTP response to extract status code
+    fn parse_status(response: &[u8]) -> u16 {
+        let response_str = String::from_utf8_lossy(response);
+        // HTTP/1.1 200 OK
+        if let Some(line) = response_str.lines().next() {
+            if let Some(status) = line.split_whitespace().nth(1) {
+                return status.parse().unwrap_or(0);
+            }
+        }
+        0
+    }
+
+    /// Parse HTTP response to extract body
+    fn parse_body(response: &[u8]) -> String {
+        let response_str = String::from_utf8_lossy(response);
+        // Body comes after \r\n\r\n
+        if let Some(pos) = response_str.find("\r\n\r\n") {
+            return response_str[pos + 4..].to_string();
+        }
+        String::new()
+    }
+
+    /// Parse HTTP response to extract header value
+    fn parse_header(response: &[u8], header_name: &str) -> Option<String> {
+        let response_str = String::from_utf8_lossy(response);
+        let header_lower = header_name.to_lowercase();
+        for line in response_str.lines() {
+            if line.is_empty() || line == "\r" {
+                break;
+            }
+            if let Some((name, value)) = line.split_once(':') {
+                if name.trim().to_lowercase() == header_lower {
+                    return Some(value.trim().to_string());
+                }
+            }
+        }
+        None
+    }
+
+    #[tokio::test]
+    async fn health_endpoint() {
+        let state = create_test_state(OutputMode::Json, None);
+        let response = handle_request("/health", &state).await;
+        assert_eq!(parse_status(&response), 200);
+        assert_eq!(parse_body(&response), "OK");
+    }
+
     #[tokio::test]
     async fn decode_valid_base44_json_mode() {
-        let app = create_test_app(OutputMode::Json, None);
+        let state = create_test_state(OutputMode::Json, None);
         let base44 = get_test_base44(0);
+        let encoded = urlencoding::encode(base44);
+        let path = format!("/{}", encoded);
 
-        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 200);
 
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
+        let body = parse_body(&response);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["base44"], base44);
         assert!(json["uuid"].as_str().unwrap().contains("-"));
         assert_eq!(json["bytes"].as_str().unwrap().len(), 32);
     }
 
-    /// Test: handler decodes URL-encoded Base44 when length > 19
-    /// Browser sends URL-encoded Base44 → handler decodes → processes original
     #[tokio::test]
     async fn url_encoding_decoded_by_handler() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Use a known Base44 WITH '/' to test %2F decoding
-        // "O5297/8PQ+J609-Z$K:" contains /
+        let state = create_test_state(OutputMode::Json, None);
         let base44_with_slash = "O5297/8PQ+J609-Z$K:";
-
-        // URL-encode the Base44 (simulates what browsers send)
         let encoded = urlencoding::encode(base44_with_slash);
+        let path = format!("/{}", encoded);
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", encoded))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 200);
 
-        // Handler decodes URL-encoded input (length > 19)
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-        // Response contains the original Base44
+        let body = parse_body(&response);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["base44"], base44_with_slash);
     }
 
-    /// Test: URL-encoded '+' and ':' are decoded correctly
     #[tokio::test]
     async fn url_encoding_special_chars_decoded() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Use a known Base44 with '+' and ':' chars
-        // "G96+RDOEF+:I3F6J4RZ" contains + and :
+        let state = create_test_state(OutputMode::Json, None);
         let base44_special = "G96+RDOEF+:I3F6J4RZ";
-
-        // URL-encode all special chars
         let encoded = urlencoding::encode(base44_special);
+        let path = format!("/{}", encoded);
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", encoded))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 200);
 
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
+        let body = parse_body(&response);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["base44"], base44_special);
     }
 
-    /// Test: '%' character in Base44 is correctly handled when URL-encoded
-    /// '%' is encoded as %25, handler decodes it back to '%'
     #[tokio::test]
     async fn url_encoding_percent_char_decoded() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Use a known Base44 with '%' char
-        // "DPN.M2YT.%YDYX+OYZV" contains %
+        let state = create_test_state(OutputMode::Json, None);
         let base44_with_percent = "DPN.M2YT.%YDYX+OYZV";
-        assert!(base44_with_percent.contains('%'));
-
-        // URL-encode: % becomes %25
         let encoded = urlencoding::encode(base44_with_percent);
-        assert!(encoded.contains("%25")); // % → %25
+        assert!(encoded.contains("%25"));
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", encoded))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let path = format!("/{}", encoded);
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 200);
 
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-        // Response contains the original Base44 with '%'
+        let body = parse_body(&response);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["base44"], base44_with_percent);
     }
 
-    /// Test: raw Base44 with '%' works when NOT URL-encoded
-    /// urlencoding::decode preserves invalid %XX sequences (e.g., %YD is not valid hex)
     #[tokio::test]
     async fn raw_base44_with_percent_preserved() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Raw Base44 containing % followed by non-hex chars
-        // %YD is not a valid URL encoding sequence, so it stays as-is
+        let state = create_test_state(OutputMode::Json, None);
+        // Raw 19-char path with invalid %XX (not URL-encoded)
         let raw_base44 = "DPN.M2YT.%YDYX+OYZV";
+        let path = format!("/{}", raw_base44);
 
-        // Send raw (not URL-encoded) - note: + is kept as-is in path
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", raw_base44))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 200);
 
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-
-        // %YD is preserved because it's not a valid percent-encoding sequence
+        let body = parse_body(&response);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["base44"], raw_base44);
     }
 
     // ------------------------------------------------------------------------
-    // Raw transmission edge case tests
-    // These test that special characters pass through HTTP correctly
-    // We use a simplified handler that just echoes the received string
+    // Raw transmission edge case tests (direct path handling)
     // ------------------------------------------------------------------------
 
-    /// Create a simple echo app for transmission testing
-    fn create_echo_app() -> Router {
-        use axum::{extract::Path, routing::get};
-
-        async fn echo_handler(Path(raw): Path<String>) -> String {
-            // Normalize: raw (19 chars) or URL-encoded (>19 chars)
-            let result = if raw.len() == 19 {
-                raw
-            } else if raw.len() > 19 {
-                match urlencoding::decode(&raw) {
-                    Ok(decoded) => decoded.into_owned(),
-                    Err(_) => format!("DECODE_ERROR:{}", raw),
-                }
-            } else {
-                format!("TOO_SHORT:{}", raw)
-            };
-            result
+    /// Helper: normalize input like the handler does
+    fn normalize_input(raw: &str) -> String {
+        if raw.len() == 19 {
+            raw.to_string()
+        } else if raw.len() > 19 {
+            urlencoding::decode(raw)
+                .map(|d| d.into_owned())
+                .unwrap_or_else(|_| format!("DECODE_ERROR:{}", raw))
+        } else {
+            format!("TOO_SHORT:{}", raw)
         }
-
-        Router::new().route("/{input}", get(echo_handler))
     }
 
-    /// Helper to test raw transmission (19 chars, no URL encoding)
-    async fn test_raw_transmission(input: &str) -> String {
-        assert_eq!(input.len(), 19, "Test input must be 19 chars");
-        let app = create_echo_app();
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", input))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        String::from_utf8(body.to_vec()).unwrap()
-    }
-
-    /// Helper to test URL-encoded transmission
-    async fn test_encoded_transmission(input: &str) -> String {
-        assert_eq!(input.len(), 19, "Test input must be 19 chars");
-        let app = create_echo_app();
-        let encoded = urlencoding::encode(input);
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", encoded))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        String::from_utf8(body.to_vec()).unwrap()
-    }
-
-    // ---- Tests that PASS with raw transmission ----
-
-    #[tokio::test]
-    async fn raw_transmission_dot_at_start() {
-        // '.' at start - hidden file pattern, works in raw mode
+    #[test]
+    fn raw_transmission_dot_at_start() {
         let input = ".AAAAAAAAAAAAAAAAAA"; // 19 chars
-        let result = test_raw_transmission(input).await;
-        assert_eq!(result, input);
+        assert_eq!(normalize_input(input), input);
     }
 
-    #[tokio::test]
-    async fn raw_transmission_double_dot() {
-        // '..' in middle - path traversal pattern, works in raw mode
+    #[test]
+    fn raw_transmission_double_dot() {
         let input = "AAAA..AAAAAAAAAAAAA"; // 19 chars
-        let result = test_raw_transmission(input).await;
-        assert_eq!(result, input);
+        assert_eq!(normalize_input(input), input);
     }
 
-    #[tokio::test]
-    async fn raw_transmission_colon_at_start() {
-        // ':' at start - works in raw mode
+    #[test]
+    fn raw_transmission_colon_at_start() {
         let input = ":AAAAAAAAAAAAAAAAAA"; // 19 chars
-        let result = test_raw_transmission(input).await;
-        assert_eq!(result, input);
+        assert_eq!(normalize_input(input), input);
     }
 
-    #[tokio::test]
-    async fn raw_transmission_safe_special_chars() {
-        // Special chars without '/' work in raw mode: $ % * + - . :
-        // Note: % followed by non-hex is safe
+    #[test]
+    fn raw_transmission_safe_special_chars() {
         let input = "$%Y*+-.::$%Z*+-.::A"; // 19 chars, no /
-        let result = test_raw_transmission(input).await;
-        assert_eq!(result, input);
+        assert_eq!(normalize_input(input), input);
     }
 
-    // ---- Tests that FAIL with raw but PASS with URL encoding ----
-    // These document cases where clients MUST use URL encoding
-
-    #[tokio::test]
-    async fn encoded_transmission_slash_at_start() {
-        // '/' at start: raw "//xxx" fails (parsed as netloc)
-        // URL-encoded works
+    #[test]
+    fn encoded_transmission_slash_at_start() {
         let input = "/AAAAAAAAAAAAAAAAAA"; // 19 chars
-        let result = test_encoded_transmission(input).await;
-        assert_eq!(result, input);
+        let encoded = urlencoding::encode(input);
+        assert_eq!(normalize_input(&encoded), input);
     }
 
-    #[tokio::test]
-    async fn encoded_transmission_double_slash() {
-        // '//' in middle: raw fails (route not matched)
-        // URL-encoded works
+    #[test]
+    fn encoded_transmission_double_slash() {
         let input = "AAAA//AAAAAAAAAAAAA"; // 19 chars
-        let result = test_encoded_transmission(input).await;
-        assert_eq!(result, input);
+        let encoded = urlencoding::encode(input);
+        assert_eq!(normalize_input(&encoded), input);
     }
 
-    #[tokio::test]
-    async fn encoded_transmission_percent_with_valid_hex() {
-        // '%41' in raw mode: axum decodes to 'A', changing length
-        // URL-encoded (%2541) works correctly
+    #[test]
+    fn encoded_transmission_percent_with_valid_hex() {
         let input = "AAA%41AAAAAAAAAAAAA"; // 19 chars
-        let result = test_encoded_transmission(input).await;
-        assert_eq!(result, input);
+        let encoded = urlencoding::encode(input);
+        assert_eq!(normalize_input(&encoded), input);
     }
 
-    #[tokio::test]
-    async fn encoded_transmission_all_special_chars() {
-        // All Base44 special chars: $ % * + - . / :
+    #[test]
+    fn encoded_transmission_all_special_chars() {
         let input = "$%*+-./:$%*+-./:$%*"; // 19 chars
-        let result = test_encoded_transmission(input).await;
-        assert_eq!(result, input);
+        let encoded = urlencoding::encode(input);
+        assert_eq!(normalize_input(&encoded), input);
     }
 
-    #[tokio::test]
-    async fn encoded_transmission_consecutive_slashes() {
-        // Multiple consecutive slashes
+    #[test]
+    fn encoded_transmission_consecutive_slashes() {
         let input = "///AAAAAAAAAAAAAAAA"; // 19 chars
-        let result = test_encoded_transmission(input).await;
-        assert_eq!(result, input);
+        let encoded = urlencoding::encode(input);
+        assert_eq!(normalize_input(&encoded), input);
     }
 
-    #[tokio::test]
-    async fn encoded_transmission_mixed_edge_cases() {
-        // Mix of all problematic patterns
+    #[test]
+    fn encoded_transmission_mixed_edge_cases() {
         let input = "/%41//..::$%*+-.ABC"; // 19 chars
-        let result = test_encoded_transmission(input).await;
-        assert_eq!(result, input);
+        let encoded = urlencoding::encode(input);
+        assert_eq!(normalize_input(&encoded), input);
     }
 
     #[tokio::test]
     async fn decode_invalid_base44_wrong_length_short() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Too short (less than 19 chars)
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/ABC123")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("length"));
+        let state = create_test_state(OutputMode::Json, None);
+        let response = handle_request("/ABC123", &state).await;
+        assert_eq!(parse_status(&response), 400);
+        assert!(parse_body(&response).contains("length"));
     }
 
     #[tokio::test]
     async fn decode_invalid_base44_wrong_length_long() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Too long (more than 19 chars)
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let body_str = String::from_utf8(body.to_vec()).unwrap();
-        assert!(body_str.contains("length"));
+        let state = create_test_state(OutputMode::Json, None);
+        let response = handle_request("/ABCDEFGHIJKLMNOPQRSTUVWXYZ", &state).await;
+        assert_eq!(parse_status(&response), 400);
+        assert!(parse_body(&response).contains("length"));
     }
 
     #[tokio::test]
     async fn decode_invalid_base44_bad_chars() {
-        let app = create_test_app(OutputMode::Json, None);
-
-        // Exactly 19 chars but contains invalid Base44 characters (!)
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri("/INVALID!!!!!!!!!!!")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let state = create_test_state(OutputMode::Json, None);
+        let response = handle_request("/INVALID!!!!!!!!!!!", &state).await;
+        assert_eq!(parse_status(&response), 400);
     }
 
     #[tokio::test]
     async fn decode_with_301_redirect() {
-        let app = create_test_app(
+        let state = create_test_state(
             OutputMode::Redirect301("https://example.com/item/{{uuid}}".to_string()),
             None,
         );
-
         let base44 = get_test_base44(1);
+        let encoded = urlencoding::encode(base44);
+        let path = format!("/{}", encoded);
 
-        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 301);
 
-        assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
-
-        let location = response
-            .headers()
-            .get("location")
-            .unwrap()
-            .to_str()
-            .unwrap();
+        let location = parse_header(&response, "Location").unwrap();
         assert!(location.starts_with("https://example.com/item/"));
         assert!(location.contains("-")); // UUID format
     }
 
     #[tokio::test]
     async fn decode_with_302_redirect() {
-        let app = create_test_app(
+        let state = create_test_state(
             OutputMode::Redirect302("https://example.com/go/{{base44}}".to_string()),
             None,
         );
-
         let base44 = get_test_base44(2);
+        let encoded = urlencoding::encode(base44);
+        let path = format!("/{}", encoded);
 
-        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 302);
 
-        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
-
-        let location = response
-            .headers()
-            .get("location")
-            .unwrap()
-            .to_str()
-            .unwrap();
+        let location = parse_header(&response, "Location").unwrap();
         assert!(location.contains(base44));
     }
 
     #[tokio::test]
     async fn decode_with_html_template() {
         let template = "<html><body>UUID: {{uuid}}, Code: {{base44}}</body></html>";
-        let app = create_test_app(
+        let state = create_test_state(
             OutputMode::HtmlTemplate("/dummy/path".to_string()),
             Some(template.to_string()),
         );
-
         let base44 = get_test_base44(3);
+        let encoded = urlencoding::encode(base44);
+        let path = format!("/{}", encoded);
 
-        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 200);
 
-        assert_eq!(response.status(), StatusCode::OK);
-
-        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
-            .await
-            .unwrap();
-        let html = String::from_utf8(body.to_vec()).unwrap();
-
+        let html = parse_body(&response);
         assert!(html.contains(base44));
         assert!(html.contains("-")); // UUID contains dashes
     }
 
     #[tokio::test]
     async fn decode_html_template_not_loaded() {
-        let app = create_test_app(OutputMode::HtmlTemplate("/dummy/path".to_string()), None);
-
+        let state = create_test_state(OutputMode::HtmlTemplate("/dummy/path".to_string()), None);
         let base44 = get_test_base44(4);
+        let encoded = urlencoding::encode(base44);
+        let path = format!("/{}", encoded);
 
-        let response = app.oneshot(build_base44_request(base44)).await.unwrap();
-
-        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+        let response = handle_request(&path, &state).await;
+        assert_eq!(parse_status(&response), 500);
     }
 
     // ------------------------------------------------------------------------
