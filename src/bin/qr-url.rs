@@ -879,15 +879,30 @@ mod server_tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
-    /// Generate a Base44 string safe for URL path
-    /// Excludes characters that may cause URL routing issues: / : + %
-    fn generate_url_safe_base44() -> (uuid::Uuid, String) {
+    /// Build a request - Base44 characters are passed as-is
+    /// Note: '/' in path will cause routing issues in tests, but in production
+    /// clients should URL-encode such characters and axum will decode them.
+    fn build_base44_request(base44: &str) -> Request<Body> {
+        // For test simplicity, we skip Base44 strings containing '/'
+        // In production, clients would URL-encode '/' as %2F
+        assert!(
+            !base44.contains('/'),
+            "Test helper doesn't support '/' - use a different UUID"
+        );
+        Request::builder()
+            .uri(format!("/{}", base44))
+            .body(Body::empty())
+            .unwrap()
+    }
+
+    /// Generate a Base44 without '/' for testing (axum routing limitation)
+    fn generate_test_base44() -> String {
         loop {
             let uuid = qr_url::generate_v4();
             let base44 = qr_url::encode_uuid(uuid).unwrap();
-            // Skip if contains URL-problematic characters
-            if !base44.contains('/') && !base44.contains(':') && !base44.contains('+') {
-                return (uuid, base44);
+            // '/' causes routing issues in test environment
+            if !base44.contains('/') {
+                return base44;
             }
         }
     }
@@ -895,18 +910,9 @@ mod server_tests {
     #[tokio::test]
     async fn decode_valid_base44_json_mode() {
         let app = create_test_app(OutputMode::Json, None);
+        let base44 = generate_test_base44();
 
-        let (_uuid, base44) = generate_url_safe_base44();
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", base44))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -993,17 +999,9 @@ mod server_tests {
             None,
         );
 
-        let (_uuid, base44) = generate_url_safe_base44();
+        let base44 = generate_test_base44();
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", base44))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::PERMANENT_REDIRECT);
 
@@ -1024,17 +1022,9 @@ mod server_tests {
             None,
         );
 
-        let (_uuid, base44) = generate_url_safe_base44();
+        let base44 = generate_test_base44();
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", base44))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
 
@@ -1055,17 +1045,9 @@ mod server_tests {
             Some(template.to_string()),
         );
 
-        let (_uuid, base44) = generate_url_safe_base44();
+        let base44 = generate_test_base44();
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", base44))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
 
@@ -1082,17 +1064,9 @@ mod server_tests {
     async fn decode_html_template_not_loaded() {
         let app = create_test_app(OutputMode::HtmlTemplate("/dummy/path".to_string()), None);
 
-        let (_uuid, base44) = generate_url_safe_base44();
+        let base44 = generate_test_base44();
 
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/{}", base44))
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
+        let response = app.oneshot(build_base44_request(&base44)).await.unwrap();
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
