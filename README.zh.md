@@ -48,8 +48,39 @@ Base45（[RFC 9285](https://datatracker.ietf.org/doc/html/rfc9285)）使用完�
 
 ## 安装
 
-- 构建 CLI：`cargo install --path .`
-- 以库形式使用：在你的项目中添加依赖 `qr-url = { git = "https://github.com/GoAskAway/qr-url.git" }`，或使用本地路径依赖。
+### 前置条件
+
+安装 Rust 工具链（如未安装）：
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### 安装 CLI
+
+```bash
+# 从 crates.io 安装（发布后可用）
+cargo install qr-url
+
+# 从 GitHub 安装
+cargo install --git https://github.com/GoAskAway/qr-url.git
+
+# 从本地源码安装
+git clone https://github.com/GoAskAway/qr-url.git
+cd qr-url
+cargo install --path .
+
+# 启用 HTTP 服务器功能
+cargo install --path . --features server
+```
+
+### 作为库使用
+
+在 `Cargo.toml` 中添加：
+```toml
+[dependencies]
+qr-url = { git = "https://github.com/GoAskAway/qr-url.git" }
+```
 
 ## 命令行用法
 
@@ -84,6 +115,81 @@ Base44: 3856ECXC*$A2D-ASF2- (length: 19)
 $ qr-url decode 3856ECXC*$A2D-ASF2-
 UUID:   454f7792-6670-41c2-ae4d-4a05f3000f3f
 ```
+
+## HTTP 服务器
+
+`server` 功能提供了一个轻量级 HTTP/HTTPS 服务器，用于通过 HTTP 请求解码 Base44 编码。
+
+### 启动服务器
+
+```bash
+# 基本 HTTP 服务器（默认端口 8080）
+qr-url server
+
+# 自定义端口
+qr-url server --port 3000
+
+# 使用 TLS 证书启用 HTTPS
+qr-url server --port 443 --cert /path/to/cert.pem --key /path/to/key.pem
+
+# 使用不同的输出模式
+qr-url server --mode json                           # JSON 响应（默认）
+qr-url server --mode 301:https://example.com/       # 301 重定向
+qr-url server --mode 302:https://example.com/       # 302 重定向
+qr-url server --mode html:/path/to/template.html    # HTML 模板
+```
+
+### API 端点
+
+**解码 Base44**
+```bash
+# 请求: GET /{base44}
+curl http://localhost:8080/3856ECXC*%24A2D-ASF2-
+
+# 响应（JSON 模式）:
+{
+  "uuid": "454f7792-6670-41c2-ae4d-4a05f3000f3f",
+  "base44": "3856ECXC*$A2D-ASF2-",
+  "bytes": "454f7792667041c2ae4d4a05f3000f3f"
+}
+```
+
+**健康检查**
+```bash
+curl http://localhost:8080/health
+# 响应: OK
+```
+
+### 输出模式
+
+| 模式 | 描述 | 响应 |
+|------|------|------|
+| `json` | 包含 uuid、base44、bytes 的 JSON | `{"uuid":"...","base44":"...","bytes":"..."}` |
+| `301:<url>` | 301 重定向到 `<url>{{uuid}}` | HTTP 301 带 Location 头 |
+| `302:<url>` | 302 重定向到 `<url>{{uuid}}` | HTTP 302 带 Location 头 |
+| `html:<path>` | 渲染 HTML 模板 | 替换占位符后的 HTML |
+
+### HTML 模板占位符
+
+`html:` 模式的模板文件可使用以下占位符：
+- `{{uuid}}` - 解码后的 UUID 字符串
+- `{{base44}}` - 原始 Base44 编码
+- `{{bytes}}` - 十六进制原始字节
+
+### URL 编码
+
+Base44 使用的特殊字符（`$ % * + - . / :`）在 HTTP 请求中可能需要 URL 编码：
+
+| 字符 | URL 编码 |
+|------|----------|
+| `$` | `%24` |
+| `%` | `%25` |
+| `*` | `%2A` |
+| `+` | `%2B` |
+| `/` | `%2F` |
+| `:` | `%3A` |
+
+服务器会根据长度自动检测并解码 URL 编码的 Base44 码（19 字符 = 原始，>19 字符 = URL 编码）。
 
 ## GitHub Pages 示例
 

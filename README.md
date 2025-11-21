@@ -46,8 +46,39 @@ This library implements a compact encoding scheme for **custom UUID identifiers*
 
 ## Install
 
-- Build CLI: `cargo install --path .`
-- Use as a lib: add `qr-url = { git = "https://github.com/GoAskAway/qr-url.git" }` or use a local path dependency.
+### Prerequisites
+
+Install Rust toolchain (if not already installed):
+
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### Install CLI
+
+```bash
+# From crates.io (when published)
+cargo install qr-url
+
+# From GitHub
+cargo install --git https://github.com/GoAskAway/qr-url.git
+
+# From local source
+git clone https://github.com/GoAskAway/qr-url.git
+cd qr-url
+cargo install --path .
+
+# With HTTP server feature
+cargo install --path . --features server
+```
+
+### Use as a library
+
+Add to your `Cargo.toml`:
+```toml
+[dependencies]
+qr-url = { git = "https://github.com/GoAskAway/qr-url.git" }
+```
 
 ## CLI usage
 
@@ -85,6 +116,81 @@ $ qr-url decode 3856ECXC*$A2D-ASF2-
 UUID:   454f7792-6670-41c2-ae4d-4a05f3000f3f
 Bytes:  454f7792667041c2ae4d4a05f3000f3f
 ```
+
+## HTTP Server
+
+The `server` feature provides a lightweight HTTP/HTTPS server for decoding Base44 codes via HTTP requests.
+
+### Start Server
+
+```bash
+# Basic HTTP server (default port 8080)
+qr-url server
+
+# Custom port
+qr-url server --port 3000
+
+# HTTPS with TLS certificates
+qr-url server --port 443 --cert /path/to/cert.pem --key /path/to/key.pem
+
+# With different output modes
+qr-url server --mode json                           # JSON response (default)
+qr-url server --mode 301:https://example.com/       # 301 redirect
+qr-url server --mode 302:https://example.com/       # 302 redirect
+qr-url server --mode html:/path/to/template.html    # HTML template
+```
+
+### API Endpoints
+
+**Decode Base44**
+```bash
+# Request: GET /{base44}
+curl http://localhost:8080/3856ECXC*%24A2D-ASF2-
+
+# Response (JSON mode):
+{
+  "uuid": "454f7792-6670-41c2-ae4d-4a05f3000f3f",
+  "base44": "3856ECXC*$A2D-ASF2-",
+  "bytes": "454f7792667041c2ae4d4a05f3000f3f"
+}
+```
+
+**Health Check**
+```bash
+curl http://localhost:8080/health
+# Response: OK
+```
+
+### Output Modes
+
+| Mode | Description | Response |
+|------|-------------|----------|
+| `json` | JSON with uuid, base44, bytes | `{"uuid":"...","base44":"...","bytes":"..."}` |
+| `301:<url>` | 301 redirect to `<url>{{uuid}}` | HTTP 301 with Location header |
+| `302:<url>` | 302 redirect to `<url>{{uuid}}` | HTTP 302 with Location header |
+| `html:<path>` | Render HTML template | HTML with placeholders replaced |
+
+### HTML Template Placeholders
+
+For `html:` mode, the template file can use these placeholders:
+- `{{uuid}}` - Decoded UUID string
+- `{{base44}}` - Original Base44 code
+- `{{bytes}}` - Raw bytes as hex string
+
+### URL Encoding
+
+Base44 uses special characters (`$ % * + - . / :`) that may need URL encoding in HTTP requests:
+
+| Character | URL Encoded |
+|-----------|-------------|
+| `$` | `%24` |
+| `%` | `%25` |
+| `*` | `%2A` |
+| `+` | `%2B` |
+| `/` | `%2F` |
+| `:` | `%3A` |
+
+The server automatically detects and decodes URL-encoded Base44 codes based on length (19 chars = raw, >19 chars = URL-encoded).
 
 ## Library API
 
