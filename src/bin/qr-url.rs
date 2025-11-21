@@ -15,10 +15,13 @@ fn print_usage() {
         decode <BASE44|@->       Decode Base44 string back to custom UUID (19 chars)\n  \
         server [OPTIONS]         Start HTTP server (requires 'server' feature)\n\n\
         Server Options:\n  \
-        -p, --port <PORT>        Listen port (default: 3000)\n  \
+        -p, --port <PORT>        Listen port (default: 3000, or 443 with TLS)\n  \
         -b, --bind <ADDR>        Bind address (default: 127.0.0.1)\n  \
         -t, --template <URL>     Redirect URL template, use {{uuid}} or {{base44}} as placeholder\n  \
         -m, --mode <MODE>        Output mode: redirect, json, html (default: json)\n\n\
+        TLS Options:\n  \
+        --cert <PATH>            Path to TLS certificate file (PEM format)\n  \
+        --key <PATH>             Path to TLS private key file (PEM format)\n\n\
         Options:\n  \
         -q, --quiet              Only print the primary output\n  \
         -h, --help               Show this help\n\n\
@@ -26,7 +29,8 @@ fn print_usage() {
         qr-url gen\n  \
         qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f\n  \
         qr-url decode 3856ECXC*$A2D-ASF2-\n  \
-        qr-url server -p 8080 -m redirect -t 'https://example.com/item/{{uuid}}'\n"
+        qr-url server -p 8080 -m redirect -t 'https://example.com/item/{{uuid}}'\n  \
+        qr-url server -p 443 --cert /path/to/cert.pem --key /path/to/key.pem\n"
     );
 }
 
@@ -197,7 +201,18 @@ mod server {
         "OK"
     }
 
-    pub async fn run(bind: &str, port: u16, mode: OutputMode, template: Option<String>) {
+    pub struct TlsConfig {
+        pub cert_path: String,
+        pub key_path: String,
+    }
+
+    pub async fn run(
+        bind: &str,
+        port: u16,
+        mode: OutputMode,
+        template: Option<String>,
+        tls: Option<TlsConfig>,
+    ) {
         tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::from_default_env()
@@ -213,19 +228,43 @@ mod server {
             .with_state(state);
 
         let addr = format!("{bind}:{port}");
-        tracing::info!(addr = %addr, mode = ?mode, "starting server");
 
-        let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-        axum::serve(listener, app).await.unwrap();
+        if let Some(tls_cfg) = tls {
+            tracing::info!(addr = %addr, mode = ?mode, "starting HTTPS server");
+
+            let rustls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(
+                &tls_cfg.cert_path,
+                &tls_cfg.key_path,
+            )
+            .await
+            .unwrap_or_else(|e| {
+                eprintln!("Failed to load TLS config: {e}");
+                eprintln!("  cert: {}", tls_cfg.cert_path);
+                eprintln!("  key: {}", tls_cfg.key_path);
+                std::process::exit(2);
+            });
+
+            axum_server::bind_rustls(addr.parse().unwrap(), rustls_config)
+                .serve(app.into_make_service())
+                .await
+                .unwrap();
+        } else {
+            tracing::info!(addr = %addr, mode = ?mode, "starting HTTP server");
+
+            let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+            axum::serve(listener, app).await.unwrap();
+        }
     }
 }
 
 #[cfg(feature = "server")]
 fn run_server(args: &[String]) {
-    let mut port: u16 = 3000;
+    let mut port: Option<u16> = None;
     let mut bind = "127.0.0.1".to_string();
     let mut mode = server::OutputMode::Json;
     let mut template: Option<String> = None;
+    let mut cert_path: Option<String> = None;
+    let mut key_path: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -233,10 +272,10 @@ fn run_server(args: &[String]) {
             "-p" | "--port" => {
                 i += 1;
                 if i < args.len() {
-                    port = args[i].parse().unwrap_or_else(|_| {
+                    port = Some(args[i].parse().unwrap_or_else(|_| {
                         eprintln!("Invalid port: {}", args[i]);
                         std::process::exit(2);
-                    });
+                    }));
                 }
             }
             "-b" | "--bind" => {
@@ -260,6 +299,18 @@ fn run_server(args: &[String]) {
                     template = Some(args[i].clone());
                 }
             }
+            "--cert" => {
+                i += 1;
+                if i < args.len() {
+                    cert_path = Some(args[i].clone());
+                }
+            }
+            "--key" => {
+                i += 1;
+                if i < args.len() {
+                    key_path = Some(args[i].clone());
+                }
+            }
             _ => {}
         }
         i += 1;
@@ -272,11 +323,31 @@ fn run_server(args: &[String]) {
         std::process::exit(2);
     }
 
+    // Build TLS config if both cert and key are provided
+    let tls = match (&cert_path, &key_path) {
+        (Some(cert), Some(key)) => Some(server::TlsConfig {
+            cert_path: cert.clone(),
+            key_path: key.clone(),
+        }),
+        (Some(_), None) => {
+            eprintln!("--cert requires --key");
+            std::process::exit(2);
+        }
+        (None, Some(_)) => {
+            eprintln!("--key requires --cert");
+            std::process::exit(2);
+        }
+        (None, None) => None,
+    };
+
+    // Default port: 443 for TLS, 3000 for HTTP
+    let port = port.unwrap_or(if tls.is_some() { 443 } else { 3000 });
+
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
-        .block_on(server::run(&bind, port, mode, template));
+        .block_on(server::run(&bind, port, mode, template, tls));
 }
 
 #[cfg(not(feature = "server"))]

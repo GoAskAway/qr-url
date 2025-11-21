@@ -13,7 +13,7 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 default = []
-server = ["tokio", "axum", "serde", "serde_json", "tracing", "tracing-subscriber"]
+server = ["tokio", "axum", "axum-server", "serde", "serde_json", "tracing", "tracing-subscriber"]
 
 [dependencies]
 uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
@@ -24,6 +24,7 @@ qr-base44 = { git = "https://github.com/kookyleo/qr-base44.git", branch = "feat/
 # HTTP server (optional, for server subcommand)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"], optional = true }
 axum = { version = "0.8", optional = true }
+axum-server = { version = "0.7", features = ["tls-rustls"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 tracing = { version = "0.1", optional = true }
