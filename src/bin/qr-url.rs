@@ -17,8 +17,11 @@ fn print_usage() {
         Server Options:\n  \
         -p, --port <PORT>        Listen port (default: 3000, or 443 with TLS)\n  \
         -b, --bind <ADDR>        Bind address (default: 127.0.0.1)\n  \
-        -t, --template <URL>     Redirect URL template, use {{uuid}} or {{base44}} as placeholder\n  \
-        -m, --mode <MODE>        Output mode: redirect, json, html (default: json)\n\n\
+        -m, --mode <MODE>        Output mode (default: json). Formats:\n                           \
+        - json                   Return JSON {{base44, uuid, bytes}}\n                           \
+        - 301 <URL>              Redirect with 301 (permanent), e.g. '301 https://x.com/{{uuid}}'\n                           \
+        - 302 <URL>              Redirect with 302 (temporary), e.g. '302 https://x.com/{{uuid}}'\n                           \
+        - html <PATH>            Render HTML template file, supports {{uuid}}, {{base44}}, {{bytes}}\n\n\
         TLS Options:\n  \
         --cert <PATH>            Path to TLS certificate file (PEM format)\n  \
         --key <PATH>             Path to TLS private key file (PEM format)\n\n\
@@ -29,8 +32,11 @@ fn print_usage() {
         qr-url gen\n  \
         qr-url encode 454f7792-6670-41c2-ae4d-4a05f3000f3f\n  \
         qr-url decode 3856ECXC*$A2D-ASF2-\n  \
-        qr-url server -p 8080 -m redirect -t 'https://example.com/item/{{uuid}}'\n  \
-        qr-url server -p 443 --cert /path/to/cert.pem --key /path/to/key.pem\n"
+        qr-url server -m json\n  \
+        qr-url server -m '301 https://example.com/item/{{uuid}}'\n  \
+        qr-url server -m '302 https://example.com/go/{{base44}}'\n  \
+        qr-url server -m 'html /path/to/landing.html'\n  \
+        qr-url server -p 443 --cert cert.pem --key key.pem\n"
     );
 }
 
@@ -85,29 +91,45 @@ mod server {
     use serde::Serialize;
     use std::sync::Arc;
 
-    #[derive(Debug, Clone, Copy, PartialEq)]
+    /// Output mode parsed from --mode argument
+    #[derive(Debug, Clone)]
     pub enum OutputMode {
-        Redirect,
         Json,
-        Html,
+        Redirect301(String),  // URL template
+        Redirect302(String),  // URL template
+        HtmlTemplate(String), // File path to HTML template
     }
 
-    impl std::str::FromStr for OutputMode {
-        type Err = String;
-        fn from_str(s: &str) -> Result<Self, Self::Err> {
-            match s.to_lowercase().as_str() {
-                "redirect" | "r" => Ok(OutputMode::Redirect),
-                "json" | "j" => Ok(OutputMode::Json),
-                "html" | "h" => Ok(OutputMode::Html),
-                _ => Err(format!("unknown mode: {s}, expected: redirect, json, html")),
+    impl OutputMode {
+        pub fn parse(s: &str) -> Result<Self, String> {
+            let s = s.trim();
+            if s.eq_ignore_ascii_case("json") {
+                return Ok(OutputMode::Json);
             }
+            if let Some(url) = s.strip_prefix("301 ") {
+                return Ok(OutputMode::Redirect301(url.trim().to_string()));
+            }
+            if let Some(url) = s.strip_prefix("302 ") {
+                return Ok(OutputMode::Redirect302(url.trim().to_string()));
+            }
+            if let Some(path) = s.strip_prefix("html ") {
+                let path = path.trim().to_string();
+                // Validate file exists
+                if !std::path::Path::new(&path).exists() {
+                    return Err(format!("HTML template file not found: {path}"));
+                }
+                return Ok(OutputMode::HtmlTemplate(path));
+            }
+            Err(format!(
+                "Invalid mode: '{s}'\nExpected: json, '301 <URL>', '302 <URL>', or 'html <PATH>'"
+            ))
         }
     }
 
     #[derive(Clone)]
     pub struct AppState {
         pub mode: OutputMode,
-        pub template: Option<String>,
+        pub html_template: Option<String>, // Cached HTML template content
     }
 
     #[derive(Serialize)]
@@ -115,6 +137,13 @@ mod server {
         base44: String,
         uuid: String,
         bytes: String,
+    }
+
+    fn render_template(template: &str, base44: &str, uuid_str: &str, bytes_hex: &str) -> String {
+        template
+            .replace("{{uuid}}", uuid_str)
+            .replace("{{base44}}", base44)
+            .replace("{{bytes}}", bytes_hex)
     }
 
     async fn handle_base44(
@@ -135,7 +164,7 @@ mod server {
 
         tracing::info!(base44 = %base44, uuid = %uuid_str, "decoded");
 
-        match state.mode {
+        match &state.mode {
             OutputMode::Json => {
                 let resp = DecodeResponse {
                     base44: base44.clone(),
@@ -149,50 +178,23 @@ mod server {
                 )
                     .into_response()
             }
-            OutputMode::Html => {
-                let html = format!(
-                    r#"<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>QR-URL Decode</title>
-    <style>
-        body {{ font-family: system-ui, sans-serif; padding: 2rem; max-width: 600px; margin: 0 auto; }}
-        .field {{ margin: 1rem 0; }}
-        .label {{ font-weight: bold; color: #666; }}
-        .value {{ font-family: monospace; background: #f4f4f4; padding: 0.5rem; border-radius: 4px; word-break: break-all; }}
-    </style>
-</head>
-<body>
-    <h1>QR-URL Decode Result</h1>
-    <div class="field">
-        <div class="label">Base44:</div>
-        <div class="value">{base44}</div>
-    </div>
-    <div class="field">
-        <div class="label">UUID:</div>
-        <div class="value">{uuid_str}</div>
-    </div>
-    <div class="field">
-        <div class="label">Bytes (hex):</div>
-        <div class="value">{bytes_hex}</div>
-    </div>
-</body>
-</html>"#
-                );
-                Html(html).into_response()
+            OutputMode::Redirect301(url_template) => {
+                let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
+                tracing::info!(target = %target, "redirecting 301");
+                Redirect::permanent(&target).into_response()
             }
-            OutputMode::Redirect => {
-                let target = if let Some(ref tpl) = state.template {
-                    tpl.replace("{{uuid}}", &uuid_str)
-                        .replace("{{base44}}", &base44)
-                        .replace("{{bytes}}", &bytes_hex)
-                } else {
-                    // Default: just return the UUID as path
-                    format!("/{uuid_str}")
-                };
-                tracing::info!(target = %target, "redirecting");
+            OutputMode::Redirect302(url_template) => {
+                let target = render_template(url_template, &base44, &uuid_str, &bytes_hex);
+                tracing::info!(target = %target, "redirecting 302");
                 Redirect::temporary(&target).into_response()
+            }
+            OutputMode::HtmlTemplate(_) => {
+                if let Some(ref tpl) = state.html_template {
+                    let html = render_template(tpl, &base44, &uuid_str, &bytes_hex);
+                    Html(html).into_response()
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "Template not loaded").into_response()
+                }
             }
         }
     }
@@ -206,13 +208,7 @@ mod server {
         pub key_path: String,
     }
 
-    pub async fn run(
-        bind: &str,
-        port: u16,
-        mode: OutputMode,
-        template: Option<String>,
-        tls: Option<TlsConfig>,
-    ) {
+    pub async fn run(bind: &str, port: u16, mode: OutputMode, tls: Option<TlsConfig>) {
         tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::from_default_env()
@@ -220,7 +216,26 @@ mod server {
             )
             .init();
 
-        let state = Arc::new(AppState { mode, template });
+        // Load HTML template if needed
+        let html_template = if let OutputMode::HtmlTemplate(ref path) = mode {
+            match std::fs::read_to_string(path) {
+                Ok(content) => {
+                    tracing::info!(path = %path, "loaded HTML template");
+                    Some(content)
+                }
+                Err(e) => {
+                    eprintln!("Failed to read HTML template: {e}");
+                    std::process::exit(2);
+                }
+            }
+        } else {
+            None
+        };
+
+        let state = Arc::new(AppState {
+            mode: mode.clone(),
+            html_template,
+        });
 
         let app = Router::new()
             .route("/health", get(health))
@@ -261,8 +276,7 @@ mod server {
 fn run_server(args: &[String]) {
     let mut port: Option<u16> = None;
     let mut bind = "127.0.0.1".to_string();
-    let mut mode = server::OutputMode::Json;
-    let mut template: Option<String> = None;
+    let mut mode_str: Option<String> = None;
     let mut cert_path: Option<String> = None;
     let mut key_path: Option<String> = None;
 
@@ -287,16 +301,7 @@ fn run_server(args: &[String]) {
             "-m" | "--mode" => {
                 i += 1;
                 if i < args.len() {
-                    mode = args[i].parse().unwrap_or_else(|e| {
-                        eprintln!("{e}");
-                        std::process::exit(2);
-                    });
-                }
-            }
-            "-t" | "--template" => {
-                i += 1;
-                if i < args.len() {
-                    template = Some(args[i].clone());
+                    mode_str = Some(args[i].clone());
                 }
             }
             "--cert" => {
@@ -316,12 +321,14 @@ fn run_server(args: &[String]) {
         i += 1;
     }
 
-    // Validate: redirect mode requires template
-    if mode == server::OutputMode::Redirect && template.is_none() {
-        eprintln!("Redirect mode requires --template <URL>");
-        eprintln!("Example: --template 'https://example.com/item/{{{{uuid}}}}'");
-        std::process::exit(2);
-    }
+    // Parse mode (default: json)
+    let mode = match &mode_str {
+        Some(s) => server::OutputMode::parse(s).unwrap_or_else(|e| {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }),
+        None => server::OutputMode::Json,
+    };
 
     // Build TLS config if both cert and key are provided
     let tls = match (&cert_path, &key_path) {
@@ -347,7 +354,7 @@ fn run_server(args: &[String]) {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(server::run(&bind, port, mode, template, tls));
+        .block_on(server::run(&bind, port, mode, tls));
 }
 
 #[cfg(not(feature = "server"))]
