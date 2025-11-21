@@ -194,13 +194,18 @@ mod server {
     }
 
     async fn handle_base44(
-        Path(base44): Path<String>,
+        Path(raw_base44): Path<String>,
         State(state): State<Arc<AppState>>,
     ) -> Response {
+        // Manually decode %2F → / (axum doesn't decode this for path segments)
+        // Other URL-encoded chars like %2B (+) and %3A (:) are decoded automatically
+        let base44 = raw_base44.replace("%2F", "/").replace("%2f", "/");
+
         // Validate Base44 length (must be 19 chars for custom UUID variant)
         if base44.len() != 19 {
             tracing::warn!(
                 base44 = %base44,
+                raw = %raw_base44,
                 len = base44.len(),
                 "invalid Base44 length"
             );
@@ -794,11 +799,14 @@ mod server_tests {
             .route(
                 "/{base44}",
                 get(
-                    |axum::extract::Path(base44): axum::extract::Path<String>,
+                    |axum::extract::Path(raw_base44): axum::extract::Path<String>,
                      axum::extract::State(state): axum::extract::State<Arc<AppState>>| async move {
                         use axum::http::header;
                         use axum::response::{Html, IntoResponse, Redirect};
                         use qr_url::{decode_to_bytes, decode_to_string};
+
+                        // Manually decode %2F → / (axum doesn't decode this for path segments)
+                        let base44 = raw_base44.replace("%2F", "/").replace("%2f", "/");
 
                         // Length validation
                         if base44.len() != 19 {
@@ -924,6 +932,81 @@ mod server_tests {
         assert_eq!(json["base44"], base44);
         assert!(json["uuid"].as_str().unwrap().contains("-"));
         assert_eq!(json["bytes"].as_str().unwrap().len(), 32);
+    }
+
+    /// Test: axum Path extractor DOES auto-decode URL-encoded chars
+    /// Browser sends /%41 → axum decodes to /A → handler receives "A"
+    #[tokio::test]
+    async fn url_encoding_is_auto_decoded() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // A valid 19-char Base44 without '/'
+        let base44 = generate_test_base44();
+        assert_eq!(base44.len(), 19);
+
+        // URL-encode some chars - simulates browser behavior
+        let encoded = base44.replace('A', "%41"); // 'A' → '%41'
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", encoded))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // axum decodes %41 back to A, so handler receives original Base44
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Response contains the decoded (original) Base44
+        assert_eq!(json["base44"], base44);
+    }
+
+    /// Test: URL-encoded '/' (%2F) is manually decoded by server
+    /// axum doesn't decode %2F automatically, so we do it in the handler
+    #[tokio::test]
+    async fn url_encoded_slash_is_manually_decoded() {
+        let app = create_test_app(OutputMode::Json, None);
+
+        // Generate a Base44 WITH '/' to test %2F decoding
+        let base44_with_slash = loop {
+            let uuid = qr_url::generate_v4();
+            let b44 = qr_url::encode_uuid(uuid).unwrap();
+            if b44.contains('/') {
+                break b44;
+            }
+        };
+
+        // URL-encode the '/' as %2F (what browsers do)
+        let encoded = base44_with_slash.replace('/', "%2F");
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/{}", encoded))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        // Server manually decodes %2F → /, so this should work
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        // Response contains the original Base44 with '/'
+        assert_eq!(json["base44"], base44_with_slash);
     }
 
     #[tokio::test]
