@@ -13,12 +13,21 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 default = []
+server = ["tokio", "axum", "serde", "serde_json", "tracing", "tracing-subscriber"]
 
 [dependencies]
 uuid = { version = "1", features = ["v4", "serde", "fast-rng"] }
 thiserror = "2"
 hex = "0.4"
 qr-base44 = { git = "https://github.com/kookyleo/qr-base44.git", branch = "feat/optimal-bit-encoding" }
+
+# HTTP server (optional, for server subcommand)
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"], optional = true }
+axum = { version = "0.8", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 # WASM
 wasm-bindgen = { version = "0.2" }
