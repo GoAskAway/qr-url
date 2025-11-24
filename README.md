@@ -134,10 +134,10 @@ qr-url server --port 3000
 qr-url server --port 443 --cert /path/to/cert.pem --key /path/to/key.pem
 
 # With different output modes
-qr-url server --mode json                           # JSON response (default)
-qr-url server --mode 301:https://example.com/       # 301 redirect
-qr-url server --mode 302:https://example.com/       # 302 redirect
-qr-url server --mode html:/path/to/template.html    # HTML template
+qr-url server --mode json                                # JSON response (default)
+qr-url server --mode "301 https://example.com/"         # 301 redirect
+qr-url server --mode "302 https://example.com/"         # 302 redirect
+qr-url server --mode "html /path/to/template.html"      # HTML template
 ```
 
 ### API Endpoints
@@ -166,9 +166,9 @@ curl http://localhost:8080/health
 | Mode | Description | Response |
 |------|-------------|----------|
 | `json` | JSON with uuid, base44, bytes | `{"uuid":"...","base44":"...","bytes":"..."}` |
-| `301:<url>` | 301 redirect to `<url>{{uuid}}` | HTTP 301 with Location header |
-| `302:<url>` | 302 redirect to `<url>{{uuid}}` | HTTP 302 with Location header |
-| `html:<path>` | Render HTML template | HTML with placeholders replaced |
+| `"301 <url>"` | 301 redirect to `<url>{{uuid}}` | HTTP 301 with Location header |
+| `"302 <url>"` | 302 redirect to `<url>{{uuid}}` | HTTP 302 with Location header |
+| `"html <path>"` | Render HTML template | HTML with placeholders replaced |
 
 ### HTML Template Placeholders
 
