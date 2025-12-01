@@ -383,6 +383,79 @@
                     }
                 }
 
+                // Fix remainder bits: ensure they are white (should not contain data)
+                // Remainder bits are located after all codewords in the data area
+                const capacityData = {
+                    1: { L: 19, M: 16, Q: 13, H: 9 },
+                    2: { L: 34, M: 28, Q: 22, H: 16 },
+                    3: { L: 55, M: 44, Q: 34, H: 26 },
+                    4: { L: 80, M: 64, Q: 48, H: 36 },
+                    5: { L: 108, M: 86, Q: 62, H: 46 }
+                };
+                const totalCodewords = capacityData[version] ? capacityData[version][errorLevel] : null;
+                if (totalCodewords) {
+                    // Get error correction codewords count
+                    const eccData = {
+                        1: { L: 7, M: 10, Q: 13, H: 17 },
+                        2: { L: 10, M: 16, Q: 22, H: 28 },
+                        3: { L: 15, M: 26, Q: 36, H: 44 },
+                        4: { L: 20, M: 36, Q: 52, H: 64 },
+                        5: { L: 26, M: 48, Q: 72, H: 88 }
+                    };
+                    const eccCodewords = eccData[version][errorLevel];
+                    const totalCodewordCount = totalCodewords + eccCodewords;
+                    const totalBits = totalCodewordCount * 8;
+
+                    // Generate list of data modules (in zig-zag order, excluding functional modules)
+                    const dataModulePositions = [];
+                    let goingUp = true;
+                    for (let colRight = moduleCount - 1; colRight >= 0; colRight -= 2) {
+                        if (colRight === 6) colRight--; // Skip timing column
+                        if (colRight < 0) break;
+                        const colLeft = colRight - 1;
+
+                        if (goingUp) {
+                            for (let row = moduleCount - 1; row >= 0; row--) {
+                                if (!isFunctional(row, colRight, moduleCount, version)) dataModulePositions.push([row, colRight]);
+                                if (colLeft >= 0 && colLeft !== 6 && !isFunctional(row, colLeft, moduleCount, version)) {
+                                    dataModulePositions.push([row, colLeft]);
+                                }
+                            }
+                        } else {
+                            for (let row = 0; row < moduleCount; row++) {
+                                if (!isFunctional(row, colRight, moduleCount, version)) dataModulePositions.push([row, colRight]);
+                                if (colLeft >= 0 && colLeft !== 6 && !isFunctional(row, colLeft, moduleCount, version)) {
+                                    dataModulePositions.push([row, colLeft]);
+                                }
+                            }
+                        }
+                        goingUp = !goingUp;
+                    }
+
+                    // Set remainder bits to white/false
+                    for (let i = totalBits; i < dataModulePositions.length; i++) {
+                        const [row, col] = dataModulePositions[i];
+                        currentQRData.modules[row][col] = false;
+                    }
+                }
+
+                function isFunctional(row, col, size, ver) {
+                    // Finder patterns
+                    if ((row <= 7 && col <= 7) || (row <= 7 && col >= size - 8) || (row >= size - 8 && col <= 7)) return true;
+                    // Timing patterns
+                    if (row === 6 || col === 6) return true;
+                    // Alignment pattern
+                    const alignCenters = { 2: 18, 3: 22, 4: 26, 5: 30 };
+                    const alignCenter = alignCenters[ver];
+                    if (alignCenter && Math.abs(row - alignCenter) <= 2 && Math.abs(col - alignCenter) <= 2) return true;
+                    // Format information
+                    if ((row === 8 && col <= 8) || (col === 8 && row <= 8)) return true;
+                    if ((row === 8 && col >= size - 8) || (row >= size - 8 && col === 8)) return true;
+                    // Dark module
+                    if (row === 4 * ver + 9 && col === 8) return true;
+                    return false;
+                }
+
                 updateQR();
             } catch (error) {
                 console.error('QR Generation Error:', error);
