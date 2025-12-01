@@ -674,25 +674,6 @@
                     Masked: <span id="masked-count">0</span> codewords
                 </div>
             </div>
-            
-            <div class="mask-control-panel">
-                <h3>Export Mask</h3>
-                <div class="config-row">
-                    <label for="export-size">Export Size (px):</label>
-                    <select id="export-size">
-                        <option value="290">290 (1x)</option>
-                        <option value="580">580 (2x)</option>
-                        <option value="1160" selected>1160 (4x)</option>
-                        <option value="2320">2320 (8x)</option>
-                    </select>
-                </div>
-                <button id="export-mask-btn" class="apply-button" style="background: #4caf50; margin-top: 10px;">
-                    Export SVG Mask
-                </button>
-                <div class="mask-info" style="margin-top: 12px;">
-                    Exports an SVG where finder patterns, alignment pattern, and circular mask areas are <b>opaque black</b> (for custom design), while data modules are <b>transparent</b>.
-                </div>
-            </div>
 
             <div class="mask-control-panel">
                 <h3>Corner Circle Mask (Draggable)</h3>
@@ -712,6 +693,25 @@
                     Center: <span id="circle2-pos">(14, 14)</span><br>
                     Drag to move<br>
                     Masked: <span id="masked-count-2">0</span> codewords
+                </div>
+            </div>
+
+            <div class="mask-control-panel">
+                <h3>Export Mask</h3>
+                <div class="config-row">
+                    <label for="export-size">Export Size (px):</label>
+                    <select id="export-size">
+                        <option value="290">290 (1x)</option>
+                        <option value="580">580 (2x)</option>
+                        <option value="1160" selected>1160 (4x)</option>
+                        <option value="2320">2320 (8x)</option>
+                    </select>
+                </div>
+                <button id="export-mask-btn" class="apply-button" style="background: #4caf50; margin-top: 10px;">
+                    Export SVG Mask
+                </button>
+                <div class="mask-info" style="margin-top: 12px;">
+                    Exports an SVG where finder patterns, alignment pattern, and circular mask areas are <b>opaque black</b> (for custom design), while data modules are <b>transparent</b>.
                 </div>
             </div>
         </div>
