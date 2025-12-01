@@ -74,6 +74,17 @@
             margin-bottom: 0;
         }
 
+        .control-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .control-row .control-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
         label {
             display: block;
             font-size: 12px;
@@ -282,50 +293,46 @@
 
             <!-- Layer 1: QR Code Layer (Bottom) -->
             <div class="control-section">
-                <h3>QR Code Layer - Generation</h3>
+                <h3>QR Code Layer</h3>
                 <div class="control-group">
                     <label for="qr-url">Data (Alphanumeric):</label>
                     <input type="text" id="qr-url" placeholder="0-9A-Z $%*+-./:  " value="HTTPS://LETS.GO/GOX7GCXLWM0Z7PUY.66" style="text-transform: uppercase;">
                 </div>
-                <div class="control-group">
-                    <label for="qr-version">Version:</label>
-                    <select id="qr-version">
-                        <option value="0">Auto</option>
-                        <option value="1">Version 1 (21x21)</option>
-                        <option value="2">Version 2 (25x25)</option>
-                        <option value="3" selected>Version 3 (29x29)</option>
-                        <option value="4">Version 4 (33x33)</option>
-                        <option value="5">Version 5 (37x37)</option>
-                    </select>
+                <div class="control-row">
+                    <div class="control-group">
+                        <label for="qr-version">Version:</label>
+                        <select id="qr-version">
+                            <option value="0">Auto</option>
+                            <option value="1">Version 1 (21x21)</option>
+                            <option value="2">Version 2 (25x25)</option>
+                            <option value="3" selected>Version 3 (29x29)</option>
+                            <option value="4">Version 4 (33x33)</option>
+                            <option value="5">Version 5 (37x37)</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label for="qr-error-level">Error Correction:</label>
+                        <select id="qr-error-level">
+                            <option value="L">Low (7%)</option>
+                            <option value="M">Medium (15%)</option>
+                            <option value="Q">Quartile (25%)</option>
+                            <option value="H" selected>High (30%)</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="control-group">
-                    <label for="qr-error-level">Error Correction:</label>
-                    <select id="qr-error-level">
-                        <option value="L">Low (7%)</option>
-                        <option value="M">Medium (15%)</option>
-                        <option value="Q">Quartile (25%)</option>
-                        <option value="H" selected>High (30%)</option>
-                    </select>
-                </div>
-                <button onclick="generateQR()">Generate QR Code</button>
-            </div>
+                <button onclick="generateQR()" style="margin-bottom: 20px;">Generate QR Code</button>
 
-            <div class="control-section">
-                <h3>QR Code Layer - Data Module Style</h3>
-                <div class="slider-group">
+                <div class="slider-group" style="margin-bottom: 15px;">
                     <div class="slider-header">
-                        <label>Diameter:</label>
+                        <label>Module Diameter:</label>
                         <span class="slider-value" id="module-diameter-value">0.85</span>
                     </div>
                     <input type="range" id="module-diameter" min="0.1" max="1.0" step="0.05" value="0.85" oninput="updateQR()">
                 </div>
-            </div>
 
-            <div class="control-section">
-                <h3>QR Code Layer - Module Grid</h3>
                 <div class="checkbox-group">
                     <input type="checkbox" id="show-grid" onchange="updateQR()">
-                    <label for="show-grid">Show Grid</label>
+                    <label for="show-grid">Show Module Grid</label>
                 </div>
             </div>
         </div>
