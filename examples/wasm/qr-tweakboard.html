@@ -676,6 +676,25 @@
             </div>
             
             <div class="mask-control-panel">
+                <h3>Export Mask</h3>
+                <div class="config-row">
+                    <label for="export-size">Export Size (px):</label>
+                    <select id="export-size">
+                        <option value="290">290 (1x)</option>
+                        <option value="580">580 (2x)</option>
+                        <option value="1160" selected>1160 (4x)</option>
+                        <option value="2320">2320 (8x)</option>
+                    </select>
+                </div>
+                <button id="export-mask-btn" class="apply-button" style="background: #4caf50; margin-top: 10px;">
+                    Export SVG Mask
+                </button>
+                <div class="mask-info" style="margin-top: 12px;">
+                    Exports an SVG where finder patterns, alignment pattern, and circular mask areas are <b>opaque black</b> (for custom design), while data modules are <b>transparent</b>.
+                </div>
+            </div>
+
+            <div class="mask-control-panel">
                 <h3>Corner Circle Mask (Draggable)</h3>
                 <div class="mask-toggle">
                     <label>
@@ -702,6 +721,13 @@
         const SIZE = 29;
         // Current QR size (updated when version changes)
         let currentSize = SIZE;
+        // Current QR configuration state (initialized to V3-H defaults)
+        let currentVersion = 3;
+        let currentErrorLevel = 'H';
+        let currentTotalCodewords = 70;
+        let currentDataCodewords = 26;
+        let currentErrorCodewords = 44;
+        let currentMaxLossCapacity = 21;  // floor(70 * 30% / 100) = 21
         // Default (V3-H) codeword configuration for initial display
         const TOTAL_DATA_CODEWORDS = 26;
         const TOTAL_ERROR_CODEWORDS = 44;
@@ -1871,6 +1897,162 @@
         
         // Initialize redundancy display
         updateRedundancy();
+
+        // ========== SVG Mask Export ==========
+        const exportMaskBtn = document.getElementById('export-mask-btn');
+        const exportSizeSelect = document.getElementById('export-size');
+
+        if (exportMaskBtn) {
+            exportMaskBtn.addEventListener('click', exportSVGMask);
+        }
+
+        function exportSVGMask() {
+            const exportSize = parseInt(exportSizeSelect.value);
+            const moduleSize = exportSize / currentSize;
+
+            // Collect all hollow areas (finder patterns, alignment, circular masks)
+            const hollowRects = [];  // {x, y, w, h} for rectangular regions
+            const hollowCircles = []; // {cx, cy, r} for circular regions
+
+            // 1. Finder patterns (3 corners, each 7x7 modules)
+            // Top-left
+            hollowRects.push({ x: 0, y: 0, w: 7 * moduleSize, h: 7 * moduleSize });
+            // Top-right
+            hollowRects.push({ x: (currentSize - 7) * moduleSize, y: 0, w: 7 * moduleSize, h: 7 * moduleSize });
+            // Bottom-left
+            hollowRects.push({ x: 0, y: (currentSize - 7) * moduleSize, w: 7 * moduleSize, h: 7 * moduleSize });
+
+            // 2. Alignment pattern (only for version >= 2)
+            const version = parseInt(qrVersionSelect.value);
+            if (version >= 2) {
+                const alignmentCenters = { 2: 18, 3: 22, 4: 26, 5: 30 };
+                const alignCenter = alignmentCenters[version];
+                if (alignCenter) {
+                    // Alignment pattern is 5x5, centered at alignCenter
+                    const alignX = (alignCenter - 2) * moduleSize;
+                    const alignY = (alignCenter - 2) * moduleSize;
+                    hollowRects.push({ x: alignX, y: alignY, w: 5 * moduleSize, h: 5 * moduleSize });
+                }
+            }
+
+            // 3. Center circular mask (if enabled and radius > 0)
+            const radius1Value = parseFloat(radiusSlider.value);
+            if (maskCheckbox.checked && radius1Value > 0) {
+                const cx = (centerCol + 0.5) * moduleSize;
+                const cy = (centerRow + 0.5) * moduleSize;
+                const r = radius1Value * moduleSize;
+                hollowCircles.push({ cx, cy, r });
+            }
+
+            // 4. Corner circular mask (if enabled and radius > 0)
+            const radius2Value = parseFloat(radiusSlider2.value);
+            if (maskCheckbox2.checked && radius2Value > 0) {
+                // Convert pixel center back to module coordinates
+                const moduleX = (circle2CenterX - gridPadding) / unitSize;
+                const moduleY = (circle2CenterY - gridPadding) / unitSize;
+                const cx = moduleX * moduleSize;
+                const cy = moduleY * moduleSize;
+                const r = radius2Value * moduleSize;
+                hollowCircles.push({ cx, cy, r });
+            }
+
+            // 5. Collect masked codeword modules (white/blank areas)
+            const maskedModules = new Set();
+            const codewordModules = currentCodewordModules || [];
+            const totalCodewordsForMask = codewordModules.length;
+
+            // Check center circle
+            if (maskCheckbox.checked && radius1Value > 0) {
+                const radius1 = radius1Value * unitSize;
+                for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+                    const modules = codewordModules[cwIdx] || [];
+                    for (const [row, col] of modules) {
+                        const moduleLeft = gridPadding + col * unitSize;
+                        const moduleTop = gridPadding + row * unitSize;
+                        const moduleRight = moduleLeft + cellSize;
+                        const moduleBottom = moduleTop + cellSize;
+                        const closestX = Math.max(moduleLeft, Math.min(centerX, moduleRight));
+                        const closestY = Math.max(moduleTop, Math.min(centerY, moduleBottom));
+                        const distance = Math.sqrt(
+                            Math.pow(closestX - centerX, 2) +
+                            Math.pow(closestY - centerY, 2)
+                        );
+                        if (distance < radius1) {
+                            // Add all modules of this codeword
+                            modules.forEach(([r, c]) => maskedModules.add(`${r},${c}`));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Check second circle
+            if (maskCheckbox2.checked && radius2Value > 0) {
+                const radius2 = radius2Value * unitSize;
+                for (let cwIdx = 0; cwIdx < totalCodewordsForMask; cwIdx++) {
+                    const modules = codewordModules[cwIdx] || [];
+                    for (const [row, col] of modules) {
+                        const moduleLeft = gridPadding + col * unitSize;
+                        const moduleTop = gridPadding + row * unitSize;
+                        const moduleRight = moduleLeft + cellSize;
+                        const moduleBottom = moduleTop + cellSize;
+                        const closestX = Math.max(moduleLeft, Math.min(circle2CenterX, moduleRight));
+                        const closestY = Math.max(moduleTop, Math.min(circle2CenterY, moduleBottom));
+                        const distance = Math.sqrt(
+                            Math.pow(closestX - circle2CenterX, 2) +
+                            Math.pow(closestY - circle2CenterY, 2)
+                        );
+                        if (distance < radius2) {
+                            modules.forEach(([r, c]) => maskedModules.add(`${r},${c}`));
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Add masked modules as small rectangles to hollow out
+            maskedModules.forEach(key => {
+                const [row, col] = key.split(',').map(Number);
+                hollowRects.push({
+                    x: col * moduleSize,
+                    y: row * moduleSize,
+                    w: moduleSize,
+                    h: moduleSize
+                });
+            });
+
+            // Build SVG
+            // Design: masked areas (finder, alignment, circles) = opaque (for custom design)
+            //         data areas = transparent (expose data modules)
+            // So we directly draw the masked areas as filled shapes
+            let svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${exportSize}" height="${exportSize}" viewBox="0 0 ${exportSize} ${exportSize}">
+  <!-- Masked areas: opaque black for custom design -->
+`;
+
+            // Add masked rectangles (finder patterns, alignment, masked modules)
+            hollowRects.forEach(rect => {
+                svg += `  <rect x="${rect.x.toFixed(2)}" y="${rect.y.toFixed(2)}" width="${rect.w.toFixed(2)}" height="${rect.h.toFixed(2)}" fill="black"/>\n`;
+            });
+
+            // Add masked circles
+            hollowCircles.forEach(circle => {
+                svg += `  <circle cx="${circle.cx.toFixed(2)}" cy="${circle.cy.toFixed(2)}" r="${circle.r.toFixed(2)}" fill="black"/>\n`;
+            });
+
+            svg += `</svg>`;
+
+            // Trigger download
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `qr-mask-v${version}-${currentSize}x${currentSize}.svg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
     </script>
 </body>
 </html>
