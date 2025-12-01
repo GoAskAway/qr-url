@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Style Debugger</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        .preview-container {
+            background: white;
+            padding: 25px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            width: fit-content;
+        }
+
+        .preview-container h2 {
+            margin: 0 0 15px 0;
+            color: #333;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .controls-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 380px;
+        }
+
+        .control-section {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .control-section h3 {
+            font-size: 16px;
+            color: #333;
+            margin: 0 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            font-weight: 600;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        input[type="text"],
+        input[type="url"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: #2196f3;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 90px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .slider-value {
+            font-weight: 600;
+            color: #2196f3;
+            font-size: 12px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #2196f3;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #2196f3;
+            cursor: pointer;
+            border: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #1976d2;
+        }
+
+        button:active {
+            background: #1565c0;
+        }
+
+        #qr-canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        input[type="file"] {
+            padding: 6px 8px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        input[type="file"]::file-selector-button {
+            padding: 6px 12px;
+            background: #2196f3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        input[type="file"]::file-selector-button:hover {
+            background: #1976d2;
+        }
+
+        @media (max-width: 1024px) {
+            .controls-column {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Preview Panel -->
+        <div class="preview-container">
+            <h2>QR Style Debugger</h2>
+            <svg id="qr-canvas" width="500" height="500" viewBox="0 0 29 29">
+                <text x="14.5" y="14.5" text-anchor="middle" dominant-baseline="middle" font-size="2" fill="#999">
+                    Generate QR Code
+                </text>
+            </svg>
+        </div>
+
+        <!-- Controls Column -->
+        <div class="controls-column">
+            <!-- QR Generation -->
+            <div class="control-section">
+                <h3>QR Code Generation</h3>
+                <div class="control-group">
+                    <label for="qr-url">Data (Alphanumeric):</label>
+                    <input type="text" id="qr-url" placeholder="0-9A-Z $%*+-./:  " value="HTTPS://LETS.GO/GOX7GCXLWM0Z7PUY.66" style="text-transform: uppercase;">
+                </div>
+                <div class="control-group">
+                    <label for="qr-version">Version:</label>
+                    <select id="qr-version">
+                        <option value="0">Auto</option>
+                        <option value="1">Version 1 (21x21)</option>
+                        <option value="2">Version 2 (25x25)</option>
+                        <option value="3" selected>Version 3 (29x29)</option>
+                        <option value="4">Version 4 (33x33)</option>
+                        <option value="5">Version 5 (37x37)</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="qr-error-level">Error Correction:</label>
+                    <select id="qr-error-level">
+                        <option value="L">Low (7%)</option>
+                        <option value="M">Medium (15%)</option>
+                        <option value="Q">Quartile (25%)</option>
+                        <option value="H" selected>High (30%)</option>
+                    </select>
+                </div>
+                <button onclick="generateQR()">Generate QR Code</button>
+            </div>
+
+                <!-- Module Style -->
+                <div class="control-section">
+                    <h3>Data Module Style</h3>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Diameter:</label>
+                            <span class="slider-value" id="module-diameter-value">0.85</span>
+                        </div>
+                        <input type="range" id="module-diameter" min="0.1" max="1.0" step="0.05" value="0.85" oninput="updateQR()">
+                    </div>
+                </div>
+
+                <!-- Finder Pattern Style -->
+                <div class="control-section">
+                    <h3>Finder Pattern Style</h3>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Outer Ring Diameter:</label>
+                            <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
+                        </div>
+                        <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Outer Ring Stroke:</label>
+                            <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
+                        </div>
+                        <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Inner Circle Diameter:</label>
+                            <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
+                        </div>
+                        <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
+                    </div>
+                </div>
+
+                <!-- SVG Mask -->
+                <div class="control-section">
+                    <h3>SVG Mask (Optional)</h3>
+                    <div class="control-group">
+                        <label for="svg-mask-file">Upload SVG File:</label>
+                        <input type="file" id="svg-mask-file" accept=".svg,image/svg+xml" onchange="handleMaskUpload(event)">
+                        <div id="mask-status" style="margin-top: 8px; font-size: 11px; color: #666;"></div>
+                    </div>
+                    <button onclick="clearMask()" style="background: #6c757d;">Clear Mask</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Generator Library -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+
+    <script>
+        let currentQRData = null;
+        let currentMaskSVG = null;
+
+        // Generate QR Code
+        function generateQR() {
+            const url = document.getElementById('qr-url').value;
+            const version = parseInt(document.getElementById('qr-version').value);
+            const errorLevel = document.getElementById('qr-error-level').value;
+
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+
+            try {
+                // Check if qrcode library is loaded
+                if (typeof qrcode === 'undefined') {
+                    throw new Error('QR code library not loaded. Please refresh the page.');
+                }
+
+                // Create QR code using qrcode-generator library
+                const typeNumber = version; // 0 = auto, or specific version
+                const qr = qrcode(typeNumber, errorLevel);
+                qr.addData(url, 'Alphanumeric');
+                qr.make();
+
+                // Get module count
+                const moduleCount = qr.getModuleCount();
+                currentQRData = {
+                    moduleCount: moduleCount,
+                    modules: []
+                };
+
+                // Extract module data
+                for (let row = 0; row < moduleCount; row++) {
+                    currentQRData.modules[row] = [];
+                    for (let col = 0; col < moduleCount; col++) {
+                        currentQRData.modules[row][col] = qr.isDark(row, col);
+                    }
+                }
+
+                updateQR();
+            } catch (error) {
+                console.error('QR Generation Error:', error);
+                alert('Error generating QR code: ' + (error.message || error.toString()));
+            }
+        }
+
+        // Update QR visualization
+        function updateQR() {
+            if (!currentQRData) return;
+
+            const canvas = document.getElementById('qr-canvas');
+            const moduleCount = currentQRData.moduleCount;
+
+            // Update slider values display
+            document.getElementById('module-diameter-value').textContent =
+                document.getElementById('module-diameter').value;
+            document.getElementById('finder-outer-diameter-value').textContent =
+                document.getElementById('finder-outer-diameter').value;
+            document.getElementById('finder-outer-stroke-value').textContent =
+                document.getElementById('finder-outer-stroke').value;
+            document.getElementById('finder-inner-diameter-value').textContent =
+                document.getElementById('finder-inner-diameter').value;
+
+            // Get style parameters
+            const moduleDiameter = parseFloat(document.getElementById('module-diameter').value);
+            const finderOuterDiameter = parseFloat(document.getElementById('finder-outer-diameter').value);
+            const finderOuterStroke = parseFloat(document.getElementById('finder-outer-stroke').value);
+            const finderInnerDiameter = parseFloat(document.getElementById('finder-inner-diameter').value);
+
+            // Update SVG viewBox with padding for decorative elements
+            const padding = 2; // modules of padding around QR code
+            canvas.setAttribute('viewBox', `${-padding} ${-padding} ${moduleCount + padding * 2} ${moduleCount + padding * 2}`);
+
+            // Clear canvas
+            canvas.innerHTML = '';
+
+            // Create defs for mask if exists
+            if (currentMaskSVG) {
+                const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+                const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+                mask.setAttribute('id', 'qr-mask');
+
+                // White background (everything visible by default)
+                const maskBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                maskBg.setAttribute('width', moduleCount);
+                maskBg.setAttribute('height', moduleCount);
+                maskBg.setAttribute('fill', 'white');
+                mask.appendChild(maskBg);
+
+                // Add mask shapes (black = hidden)
+                const maskContent = currentMaskSVG.cloneNode(true);
+                Array.from(maskContent.children).forEach(child => {
+                    mask.appendChild(child.cloneNode(true));
+                });
+
+                defs.appendChild(mask);
+                canvas.appendChild(defs);
+            }
+
+            // Create group for all QR elements
+            const qrGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            if (currentMaskSVG) {
+                qrGroup.setAttribute('mask', 'url(#qr-mask)');
+            }
+
+            // Identify finder patterns (top-left, top-right, bottom-left)
+            const finderPositions = [
+                { row: 3.5, col: 3.5 },  // Top-left
+                { row: 3.5, col: moduleCount - 3.5 },  // Top-right
+                { row: moduleCount - 3.5, col: 3.5 }   // Bottom-left
+            ];
+
+            // Function to check if a module is part of finder pattern
+            function isInFinderPattern(row, col) {
+                const positions = [[3, 3], [3, moduleCount - 4], [moduleCount - 4, 3]];
+                for (const [centerRow, centerCol] of positions) {
+                    if (Math.abs(row - centerRow) <= 3 && Math.abs(col - centerCol) <= 3) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // Draw data modules
+            for (let row = 0; row < moduleCount; row++) {
+                for (let col = 0; col < moduleCount; col++) {
+                    if (!currentQRData.modules[row][col]) continue;
+                    if (isInFinderPattern(row, col)) continue;
+
+                    const cx = col + 0.5;
+                    const cy = row + 0.5;
+                    const r = moduleDiameter / 2;
+
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', cx);
+                    circle.setAttribute('cy', cy);
+                    circle.setAttribute('r', r);
+                    circle.setAttribute('fill', 'black');
+
+                    qrGroup.appendChild(circle);
+                }
+            }
+
+            // Draw finder patterns
+            finderPositions.forEach(pos => {
+                // Outer ring
+                const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                outerRing.setAttribute('cx', pos.col);
+                outerRing.setAttribute('cy', pos.row);
+                outerRing.setAttribute('r', finderOuterDiameter / 2);
+                outerRing.setAttribute('fill', 'none');
+                outerRing.setAttribute('stroke', 'black');
+                outerRing.setAttribute('stroke-width', finderOuterStroke);
+                qrGroup.appendChild(outerRing);
+
+                // Inner circle
+                const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                innerCircle.setAttribute('cx', pos.col);
+                innerCircle.setAttribute('cy', pos.row);
+                innerCircle.setAttribute('r', finderInnerDiameter / 2);
+                innerCircle.setAttribute('fill', 'black');
+                qrGroup.appendChild(innerCircle);
+            });
+
+            canvas.appendChild(qrGroup);
+        }
+
+        // Handle SVG Mask File Upload
+        function handleMaskUpload(event) {
+            const file = event.target.files[0];
+            const statusDiv = document.getElementById('mask-status');
+
+            if (!file) {
+                return;
+            }
+
+            if (!file.type.includes('svg')) {
+                statusDiv.textContent = '⚠️ Please select an SVG file';
+                statusDiv.style.color = '#d32f2f';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(e.target.result, 'image/svg+xml');
+                    const svgElement = doc.querySelector('svg');
+
+                    if (!svgElement) {
+                        throw new Error('Invalid SVG file');
+                    }
+
+                    // Check if QR code has been generated
+                    if (!currentQRData) {
+                        throw new Error('Please generate a QR code first');
+                    }
+
+                    // Extract viewBox from SVG mask
+                    const viewBox = svgElement.getAttribute('viewBox');
+                    if (!viewBox) {
+                        throw new Error('SVG mask must have a viewBox attribute');
+                    }
+
+                    const viewBoxParts = viewBox.split(' ').map(parseFloat);
+                    if (viewBoxParts.length !== 4) {
+                        throw new Error('Invalid viewBox format');
+                    }
+
+                    const maskSize = viewBoxParts[2]; // width from viewBox
+                    const qrSize = currentQRData.moduleCount;
+
+                    // Check if sizes match
+                    if (maskSize !== qrSize) {
+                        throw new Error(`QR size mismatch: Mask is ${maskSize}x${maskSize}, but QR code is ${qrSize}x${qrSize}. Please generate a matching QR code or use a different mask.`);
+                    }
+
+                    currentMaskSVG = svgElement;
+                    statusDiv.textContent = `✓ Loaded: ${file.name} (${maskSize}x${maskSize})`;
+                    statusDiv.style.color = '#388e3c';
+                    updateQR();
+                } catch (error) {
+                    statusDiv.textContent = `⚠️ ${error.message}`;
+                    statusDiv.style.color = '#d32f2f';
+                    currentMaskSVG = null;
+                }
+            };
+
+            reader.onerror = function() {
+                statusDiv.textContent = '⚠️ Failed to read file';
+                statusDiv.style.color = '#d32f2f';
+            };
+
+            reader.readAsText(file);
+        }
+
+        // Clear Mask
+        function clearMask() {
+            currentMaskSVG = null;
+            const fileInput = document.getElementById('svg-mask-file');
+            const statusDiv = document.getElementById('mask-status');
+
+            if (fileInput) fileInput.value = '';
+            if (statusDiv) statusDiv.textContent = '';
+
+            updateQR();
+        }
+
+        // Initialize with a default QR code
+        window.addEventListener('load', () => {
+            generateQR();
+        });
+    </script>
+</body>
+</html>

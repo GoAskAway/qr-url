@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR Tweak Board</title>
     <style>
         body {
-            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
             padding: 20px;
             background-color: #f5f5f5;
         }
@@ -698,20 +698,11 @@
 
             <div class="mask-control-panel">
                 <h3>Export Mask</h3>
-                <div class="config-row">
-                    <label for="export-size">Export Size (px):</label>
-                    <select id="export-size">
-                        <option value="290">290 (1x)</option>
-                        <option value="580">580 (2x)</option>
-                        <option value="1160" selected>1160 (4x)</option>
-                        <option value="2320">2320 (8x)</option>
-                    </select>
-                </div>
                 <button id="export-mask-btn" class="apply-button" style="background: #4caf50; margin-top: 10px;">
                     Export SVG Mask
                 </button>
                 <div class="mask-info" style="margin-top: 12px;">
-                    Exports an SVG where finder patterns, alignment pattern, and circular mask areas are <b>opaque black</b> (for custom design), while data modules are <b>transparent</b>.
+                    Exports a SVG with infinite scalability. Finder patterns, alignment pattern, and circular mask areas are <b>opaque black</b> (for custom design), while data module areas are <b>transparent</b>.
                 </div>
             </div>
         </div>
@@ -734,7 +725,17 @@
         const TOTAL_CODEWORDS = 70;  // TOTAL_DATA_CODEWORDS + TOTAL_ERROR_CODEWORDS
         const DATA_CODEWORDS = TOTAL_DATA_CODEWORDS;  // alias
         const ERROR_CORRECTION_CODEWORDS = TOTAL_ERROR_CODEWORDS;  // alias
-        
+
+        // Error correction level to capacity mapping
+        const ERROR_LEVEL_TO_CAPACITY = {
+            'L': 7, 'M': 15, 'Q': 25, 'H': 30
+        };
+
+        // Version to size mapping
+        const VERSION_TO_SIZE = {
+            1: 21, 2: 25, 3: 29, 4: 33, 5: 37
+        };
+
         // Precomputed module order for V3 (initial view only)
         const MODULE_ORDER = [
           [28, 28],          [28, 27],          [27, 28],          [27, 27],          [26, 28],          [26, 27],          [25, 28],          [25, 27],  // codeword1
@@ -1474,17 +1475,6 @@
         const qrVersionSelect = document.getElementById('qr-version');
         const errorLevelSelect = document.getElementById('error-level');
         const applyConfigButton = document.getElementById('apply-config');
-        
-        // Version to size mapping
-        const VERSION_TO_SIZE = {
-            1: 21, 2: 25, 3: 29, 4: 33, 5: 37
-        };
-        
-        // Error correction level to capacity mapping
-        const ERROR_LEVEL_TO_CAPACITY = {
-            'L': 7, 'M': 15, 'Q': 25, 'H': 30
-        };
-        
 
         // QR code version and error correction capacity data
         // QR code capacity data (based on ISO/IEC 18004)
@@ -1900,27 +1890,27 @@
 
         // ========== SVG Mask Export ==========
         const exportMaskBtn = document.getElementById('export-mask-btn');
-        const exportSizeSelect = document.getElementById('export-size');
 
         if (exportMaskBtn) {
             exportMaskBtn.addEventListener('click', exportSVGMask);
         }
 
         function exportSVGMask() {
-            const exportSize = parseInt(exportSizeSelect.value);
-            const moduleSize = exportSize / currentSize;
+            // Use a reasonable default size (can be scaled infinitely anyway)
+            const exportSize = 1000;
 
             // Collect all hollow areas (finder patterns, alignment, circular masks)
+            // Note: Using module coordinates (not pixels) for true vector graphics
             const hollowRects = [];  // {x, y, w, h} for rectangular regions
             const hollowCircles = []; // {cx, cy, r} for circular regions
 
             // 1. Finder patterns (3 corners, each 7x7 modules)
             // Top-left
-            hollowRects.push({ x: 0, y: 0, w: 7 * moduleSize, h: 7 * moduleSize });
+            hollowRects.push({ x: 0, y: 0, w: 7, h: 7 });
             // Top-right
-            hollowRects.push({ x: (currentSize - 7) * moduleSize, y: 0, w: 7 * moduleSize, h: 7 * moduleSize });
+            hollowRects.push({ x: currentSize - 7, y: 0, w: 7, h: 7 });
             // Bottom-left
-            hollowRects.push({ x: 0, y: (currentSize - 7) * moduleSize, w: 7 * moduleSize, h: 7 * moduleSize });
+            hollowRects.push({ x: 0, y: currentSize - 7, w: 7, h: 7 });
 
             // 2. Alignment pattern (only for version >= 2)
             const version = parseInt(qrVersionSelect.value);
@@ -1929,18 +1919,17 @@
                 const alignCenter = alignmentCenters[version];
                 if (alignCenter) {
                     // Alignment pattern is 5x5, centered at alignCenter
-                    const alignX = (alignCenter - 2) * moduleSize;
-                    const alignY = (alignCenter - 2) * moduleSize;
-                    hollowRects.push({ x: alignX, y: alignY, w: 5 * moduleSize, h: 5 * moduleSize });
+                    hollowRects.push({ x: alignCenter - 2, y: alignCenter - 2, w: 5, h: 5 });
                 }
             }
 
             // 3. Center circular mask (if enabled and radius > 0)
             const radius1Value = parseFloat(radiusSlider.value);
             if (maskCheckbox.checked && radius1Value > 0) {
-                const cx = (centerCol + 0.5) * moduleSize;
-                const cy = (centerRow + 0.5) * moduleSize;
-                const r = radius1Value * moduleSize;
+                // Center in module coordinates
+                const cx = centerCol + 0.5;
+                const cy = centerRow + 0.5;
+                const r = radius1Value;
                 hollowCircles.push({ cx, cy, r });
             }
 
@@ -1948,11 +1937,9 @@
             const radius2Value = parseFloat(radiusSlider2.value);
             if (maskCheckbox2.checked && radius2Value > 0) {
                 // Convert pixel center back to module coordinates
-                const moduleX = (circle2CenterX - gridPadding) / unitSize;
-                const moduleY = (circle2CenterY - gridPadding) / unitSize;
-                const cx = moduleX * moduleSize;
-                const cy = moduleY * moduleSize;
-                const r = radius2Value * moduleSize;
+                const cx = (circle2CenterX - gridPadding) / unitSize;
+                const cy = (circle2CenterY - gridPadding) / unitSize;
+                const r = radius2Value;
                 hollowCircles.push({ cx, cy, r });
             }
 
@@ -2014,20 +2001,22 @@
             maskedModules.forEach(key => {
                 const [row, col] = key.split(',').map(Number);
                 hollowRects.push({
-                    x: col * moduleSize,
-                    y: row * moduleSize,
-                    w: moduleSize,
-                    h: moduleSize
+                    x: col,
+                    y: row,
+                    w: 1,
+                    h: 1
                 });
             });
 
             // Build SVG
             // Design: masked areas (finder, alignment, circles) = opaque (for custom design)
             //         data areas = transparent (expose data modules)
-            // So we directly draw the masked areas as filled shapes
+            // Using viewBox with module coordinates for true vector graphics
+            // The exportSize only affects the default display size, not the vector data
             let svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${exportSize}" height="${exportSize}" viewBox="0 0 ${exportSize} ${exportSize}">
+<svg xmlns="http://www.w3.org/2000/svg" width="${exportSize}" height="${exportSize}" viewBox="0 0 ${currentSize} ${currentSize}">
   <!-- Masked areas: opaque black for custom design -->
+  <!-- viewBox uses module coordinates (${currentSize}x${currentSize}), making this truly scalable -->
 `;
 
             // Add masked rectangles (finder patterns, alignment, masked modules)
