@@ -311,6 +311,22 @@
                     </div>
                 </div>
 
+                <!-- Module Grid -->
+                <div class="control-section">
+                    <h3>Module Grid</h3>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="show-grid" onchange="updateQR()">
+                        <label for="show-grid">Show Grid</label>
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Grid Opacity:</label>
+                            <span class="slider-value" id="grid-opacity-value">0.3</span>
+                        </div>
+                        <input type="range" id="grid-opacity" min="0.1" max="1.0" step="0.1" value="0.3" oninput="updateQR()">
+                    </div>
+                </div>
+
                 <!-- SVG Mask -->
                 <div class="control-section">
                     <h3>SVG Mask (Optional)</h3>
@@ -393,6 +409,8 @@
                 document.getElementById('finder-outer-stroke').value;
             document.getElementById('finder-inner-diameter-value').textContent =
                 document.getElementById('finder-inner-diameter').value;
+            document.getElementById('grid-opacity-value').textContent =
+                document.getElementById('grid-opacity').value;
 
             // Get style parameters
             const moduleDiameter = parseFloat(document.getElementById('module-diameter').value);
@@ -496,6 +514,39 @@
             });
 
             canvas.appendChild(qrGroup);
+
+            // Draw module grid if enabled
+            const showGrid = document.getElementById('show-grid').checked;
+            if (showGrid) {
+                const gridOpacity = parseFloat(document.getElementById('grid-opacity').value);
+                const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                gridGroup.setAttribute('opacity', gridOpacity);
+                gridGroup.setAttribute('stroke', '#999');
+                gridGroup.setAttribute('stroke-width', '0.02');
+                gridGroup.setAttribute('fill', 'none');
+
+                // Draw vertical lines
+                for (let i = 0; i <= moduleCount; i++) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', i);
+                    line.setAttribute('y1', 0);
+                    line.setAttribute('x2', i);
+                    line.setAttribute('y2', moduleCount);
+                    gridGroup.appendChild(line);
+                }
+
+                // Draw horizontal lines
+                for (let i = 0; i <= moduleCount; i++) {
+                    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', 0);
+                    line.setAttribute('y1', i);
+                    line.setAttribute('x2', moduleCount);
+                    line.setAttribute('y2', i);
+                    gridGroup.appendChild(line);
+                }
+
+                canvas.appendChild(gridGroup);
+            }
         }
 
         // Handle SVG Mask File Upload
