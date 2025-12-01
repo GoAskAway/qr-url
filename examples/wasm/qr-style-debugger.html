@@ -456,6 +456,11 @@
                 { row: moduleCount - 3.5, col: 3.5 }   // Bottom-left
             ];
 
+            // Identify alignment pattern (only for version >= 2)
+            const alignmentCenters = { 25: 18, 29: 22, 33: 26, 37: 30 };
+            const alignCenter = alignmentCenters[moduleCount];
+            const alignmentPosition = alignCenter ? { row: alignCenter + 0.5, col: alignCenter + 0.5 } : null;
+
             // Function to check if a module is part of finder pattern
             function isInFinderPattern(row, col) {
                 const positions = [[3, 3], [3, moduleCount - 4], [moduleCount - 4, 3]];
@@ -467,11 +472,18 @@
                 return false;
             }
 
+            // Function to check if a module is part of alignment pattern
+            function isInAlignmentPattern(row, col) {
+                if (!alignCenter) return false;
+                return Math.abs(row - alignCenter) <= 2 && Math.abs(col - alignCenter) <= 2;
+            }
+
             // Draw data modules
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
                     if (!currentQRData.modules[row][col]) continue;
                     if (isInFinderPattern(row, col)) continue;
+                    if (isInAlignmentPattern(row, col)) continue;
 
                     const cx = col + 0.5;
                     const cy = row + 0.5;
@@ -507,6 +519,27 @@
                 innerCircle.setAttribute('fill', 'black');
                 qrGroup.appendChild(innerCircle);
             });
+
+            // Draw alignment pattern (if exists)
+            if (alignmentPosition) {
+                // Outer ring (scaled to 5/7 of finder pattern)
+                const alignOuterRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                alignOuterRing.setAttribute('cx', alignmentPosition.col);
+                alignOuterRing.setAttribute('cy', alignmentPosition.row);
+                alignOuterRing.setAttribute('r', (finderOuterDiameter * 5 / 7) / 2);
+                alignOuterRing.setAttribute('fill', 'none');
+                alignOuterRing.setAttribute('stroke', 'black');
+                alignOuterRing.setAttribute('stroke-width', finderOuterStroke);
+                qrGroup.appendChild(alignOuterRing);
+
+                // Inner circle (scaled to 5/7 of finder pattern)
+                const alignInnerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                alignInnerCircle.setAttribute('cx', alignmentPosition.col);
+                alignInnerCircle.setAttribute('cy', alignmentPosition.row);
+                alignInnerCircle.setAttribute('r', (finderInnerDiameter * 5 / 7) / 2);
+                alignInnerCircle.setAttribute('fill', 'black');
+                qrGroup.appendChild(alignInnerCircle);
+            }
 
             canvas.appendChild(qrGroup);
 
