@@ -702,7 +702,7 @@
                     Export SVG Mask
                 </button>
                 <div class="mask-info" style="margin-top: 12px;">
-                    Exports a SVG with infinite scalability. Only circular mask areas are <b>opaque black</b> (for custom design), while all other areas are <b>transparent</b>.
+                    Exports a SVG with infinite scalability. Circular mask areas and functional blank regions (separators, timing patterns, format info) are <b>opaque black</b> (for custom design), while data module areas are <b>transparent</b>.
                 </div>
             </div>
         </div>
@@ -1900,6 +1900,10 @@
             const exportSize = 1000;
             const version = parseInt(qrVersionSelect.value);
 
+            // Alignment pattern center position (for versions 2-5)
+            const alignmentCenters = { 2: 18, 3: 22, 4: 26, 5: 30 };
+            const alignCenter = alignmentCenters[version];
+
             // Collect only circular mask areas (no finder patterns, no alignment patterns)
             // Note: Using module coordinates (not pixels) for true vector graphics
             const hollowRects = [];  // {x, y, w, h} for rectangular regions (masked modules)
@@ -1989,6 +1993,51 @@
                     h: 1
                 });
             });
+
+            // Add functional blank areas (separators, timing patterns, etc.)
+            // 1. Separators around finder patterns (1-module wide blank areas)
+            // Top-left separator
+            hollowRects.push({ x: 0, y: 7, w: 8, h: 1 });  // Horizontal separator
+            hollowRects.push({ x: 7, y: 0, w: 1, h: 8 });  // Vertical separator
+
+            // Top-right separator
+            hollowRects.push({ x: currentSize - 8, y: 7, w: 8, h: 1 });  // Horizontal separator
+            hollowRects.push({ x: currentSize - 8, y: 0, w: 1, h: 8 });  // Vertical separator
+
+            // Bottom-left separator
+            hollowRects.push({ x: 0, y: currentSize - 8, w: 8, h: 1 });  // Horizontal separator
+            hollowRects.push({ x: 7, y: currentSize - 8, w: 1, h: 8 });  // Vertical separator
+
+            // 2. Timing patterns (row 6 and column 6, from position 8 to size-9)
+            for (let i = 8; i < currentSize - 8; i++) {
+                // Skip alignment pattern area if it overlaps
+                const skipAlignment = alignCenter && Math.abs(i - alignCenter) <= 2;
+                if (!skipAlignment) {
+                    // Timing row (row 6)
+                    if (i % 2 === 0) { // White modules in timing pattern
+                        hollowRects.push({ x: i, y: 6, w: 1, h: 1 });
+                    }
+                    // Timing column (column 6)
+                    if (i % 2 === 0) { // White modules in timing pattern
+                        hollowRects.push({ x: 6, y: i, w: 1, h: 1 });
+                    }
+                }
+            }
+
+            // 3. Format information areas (around finder patterns)
+            // These are partially white - we'll add the known blank positions
+            // Top-left format info
+            hollowRects.push({ x: 8, y: 0, w: 1, h: 6 });  // Vertical strip next to top-left
+            hollowRects.push({ x: 8, y: 7, w: 1, h: 2 });  // Below separator
+            hollowRects.push({ x: 0, y: 8, w: 6, h: 1 });  // Horizontal strip next to top-left
+            hollowRects.push({ x: 7, y: 8, w: 2, h: 1 });  // Right of separator
+
+            // 4. Dark module (always present at position [4*version+9, 8])
+            const darkModuleRow = 4 * version + 9;
+            if (darkModuleRow < currentSize) {
+                // Note: We add the surrounding area, not the dark module itself
+                // The dark module itself is black, but we might want to mask its neighbors
+            }
 
             // Build SVG
             // Design: circular mask areas = opaque black (for custom design)
