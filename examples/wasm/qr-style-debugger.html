@@ -19,42 +19,91 @@
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 2000px;
             margin: 0 auto;
             display: flex;
             gap: 30px;
-            flex-wrap: wrap;
             align-items: flex-start;
-            justify-content: center;
+            padding: 20px;
+        }
+
+        .preview-section {
+            position: sticky;
+            top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            flex-shrink: 0;
+            align-self: flex-start;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
         }
 
         .preview-container {
             background: white;
-            padding: 25px 30px;
+            padding: 20px;
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
-            width: fit-content;
+            width: 600px;
+            min-height: 600px;
+            display: flex;
+            flex-direction: column;
         }
 
         .preview-container h2 {
-            margin: 0 0 15px 0;
+            font-size: 16px;
             color: #333;
-            font-size: 20px;
+            margin: 0 0 15px 0;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #e0e0e0;
             font-weight: 600;
+        }
+
+        .canvas-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .controls-column {
             display: flex;
             flex-direction: column;
             gap: 20px;
-            width: 380px;
+            width: 1050px;
         }
 
         .control-section {
             background: white;
-            padding: 20px;
+            padding: 18px;
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 12px;
+        }
+
+        .sub-group {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #e8e8e8;
+        }
+
+        .sub-group-title {
+            font-weight: 600;
+            font-size: 12px;
+            color: #555;
+            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
         }
 
         .control-section h3 {
@@ -219,6 +268,68 @@
             display: block;
             max-width: 100%;
             height: auto;
+            margin: 0 auto;
+            transition: transform 0.3s ease;
+        }
+
+        .preview-tools {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            width: 600px;
+        }
+
+        .rotate-btn {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            font-weight: 600;
+        }
+
+        .rotate-btn:hover {
+            background: #f5f5f5;
+            border-color: #2196f3;
+        }
+
+        .rotate-btn:active {
+            transform: scale(0.95);
+        }
+
+        .zoom-control {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .zoom-icon {
+            font-size: 16px;
+        }
+
+        .zoom-control label {
+            font-size: 12px;
+            color: #666;
+            white-space: nowrap;
+            min-width: 38px;
+        }
+
+        .zoom-control input[type="range"] {
+            flex: 1;
+            height: 20px;
         }
 
         .checkbox-group {
@@ -270,14 +381,40 @@
 </head>
 <body>
     <div class="container">
-        <!-- Preview Panel -->
-        <div class="preview-container">
-            <h2>QR Style Debugger</h2>
-            <svg id="qr-canvas" width="500" height="500" viewBox="0 0 29 29">
-                <text x="14.5" y="14.5" text-anchor="middle" dominant-baseline="middle" font-size="2" fill="#999">
-                    Generate QR Code
-                </text>
-            </svg>
+        <!-- Preview Section -->
+        <div class="preview-section">
+            <!-- Preview Panel -->
+            <div class="preview-container">
+                <h2>QR Style Debugger</h2>
+                <div class="canvas-wrapper">
+                    <svg id="qr-canvas" width="540" height="540" viewBox="0 0 29 29">
+                        <text x="14.5" y="14.5" text-anchor="middle" dominant-baseline="middle" font-size="2" fill="#999">
+                            Generate QR Code
+                        </text>
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Preview Tools -->
+            <div class="preview-tools">
+                <button class="rotate-btn" onclick="rotatePreview(-45)" title="Rotate Left 45°">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                        <path d="M3 3v5h5"/>
+                    </svg>
+                </button>
+                <button class="rotate-btn" onclick="rotatePreview(45)" title="Rotate Right 45°">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/>
+                        <path d="M21 3v5h-5"/>
+                    </svg>
+                </button>
+                <div class="zoom-control">
+                    <span class="zoom-icon">🔍</span>
+                    <label id="zoom-label">100%</label>
+                    <input type="range" id="zoom-slider" min="0.5" max="2" step="0.25" value="1" oninput="setZoom(this.value)">
+                </div>
+            </div>
         </div>
 
         <!-- Controls Column -->
@@ -285,45 +422,234 @@
             <!-- Layer 3: Decorative Layer (Top) -->
             <div class="control-section">
                 <h3>Decorative Layer</h3>
-                <div style="margin-bottom: 20px;">
-                    <div style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 10px;">Finder Pattern (3 corners)</div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Outer Ring Diameter:</label>
-                            <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
+                <div class="control-grid">
+                    <!-- Left Column -->
+                    <div class="sub-group">
+                        <div class="sub-group-title">Finder Pattern (3 corners)</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Outer Ring Diameter:</label>
+                                <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
+                            </div>
+                            <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
                         </div>
-                        <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Outer Ring Stroke:</label>
+                                <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
+                            </div>
+                            <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Inner Circle Diameter:</label>
+                                <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
+                            </div>
+                            <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
+                        </div>
                     </div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Outer Ring Stroke:</label>
-                            <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
+
+                    <div class="sub-group">
+                        <div class="sub-group-title">Symmetric Dots</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Count (N×4):</label>
+                                <span class="slider-value" id="dots-count-value">0</span>
+                            </div>
+                            <input type="range" id="dots-count" min="0" max="50" step="5" value="0" oninput="updateQR()">
                         </div>
-                        <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Size Levels:</label>
+                                <span class="slider-value" id="dots-levels-value">3</span>
+                            </div>
+                            <input type="range" id="dots-levels" min="1" max="10" step="1" value="3" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Min Size:</label>
+                                <span class="slider-value" id="dots-min-size-value">0.1</span>
+                            </div>
+                            <input type="range" id="dots-min-size" min="0.05" max="1.0" step="0.05" value="0.1" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Max Size:</label>
+                                <span class="slider-value" id="dots-max-size-value">0.5</span>
+                            </div>
+                            <input type="range" id="dots-max-size" min="0.05" max="2.0" step="0.05" value="0.5" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Opacity:</label>
+                                <span class="slider-value" id="dots-opacity-value">1.0</span>
+                            </div>
+                            <input type="range" id="dots-opacity" min="0" max="1" step="0.1" value="1.0" oninput="updateQR()">
+                        </div>
                     </div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Inner Circle Diameter:</label>
-                            <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
+
+                    <div class="sub-group">
+                        <div class="sub-group-title">Alignment Pattern (center)</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Outer Ring Diameter:</label>
+                                <span class="slider-value" id="align-outer-diameter-value">4.5</span>
+                            </div>
+                            <input type="range" id="align-outer-diameter" min="3.5" max="5.0" step="0.1" value="4.5" oninput="updateQR()">
                         </div>
-                        <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Outer Ring Stroke:</label>
+                                <span class="slider-value" id="align-outer-stroke-value">0.8</span>
+                            </div>
+                            <input type="range" id="align-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                        </div>
                     </div>
-                </div>
-                <div>
-                    <div style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 10px;">Alignment Pattern (center)</div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Outer Ring Diameter:</label>
-                            <span class="slider-value" id="align-outer-diameter-value">4.5</span>
+
+                    <div class="sub-group">
+                        <div class="sub-group-title">Logo 1 (Center)</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Diameter:</label>
+                                <span class="slider-value" id="center-circle-diameter-value">0</span>
+                            </div>
+                            <input type="range" id="center-circle-diameter" min="0" max="20" step="0.5" value="0" oninput="updateQR()">
                         </div>
-                        <input type="range" id="align-outer-diameter" min="3.5" max="5.0" step="0.1" value="4.5" oninput="updateQR()">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Opacity:</label>
+                                <span class="slider-value" id="logo1-opacity-value">1.0</span>
+                            </div>
+                            <input type="range" id="logo1-opacity" min="0" max="1" step="0.1" value="1.0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Ring Diameter:</label>
+                                <span class="slider-value" id="center-ring-diameter-value">0</span>
+                            </div>
+                            <input type="range" id="center-ring-diameter" min="0" max="25" step="0.5" value="0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Ring Stroke:</label>
+                                <span class="slider-value" id="center-ring-stroke-value">1.0</span>
+                            </div>
+                            <input type="range" id="center-ring-stroke" min="0.1" max="3.0" step="0.1" value="1.0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Gap Angle:</label>
+                                <span class="slider-value" id="center-ring-gap-angle-value">0</span>
+                            </div>
+                            <input type="range" id="center-ring-gap-angle" min="0" max="360" step="15" value="0" oninput="updateQR()">
+                        </div>
                     </div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Outer Ring Stroke:</label>
-                            <span class="slider-value" id="align-outer-stroke-value">0.8</span>
+
+                    <div class="sub-group">
+                        <div class="sub-group-title">Outer Ring</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Diameter:</label>
+                                <span class="slider-value" id="outer-ring-diameter-value">0</span>
+                            </div>
+                            <input type="range" id="outer-ring-diameter" min="0" max="50" step="0.5" value="0" oninput="updateQR()">
                         </div>
-                        <input type="range" id="align-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Stroke Width:</label>
+                                <span class="slider-value" id="outer-ring-stroke-value">1.0</span>
+                            </div>
+                            <input type="range" id="outer-ring-stroke" min="0.1" max="3.0" step="0.1" value="1.0" oninput="updateQR()">
+                        </div>
+                    </div>
+
+                    <div class="sub-group">
+                        <div class="sub-group-title">Logo 2</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Diameter:</label>
+                                <span class="slider-value" id="movable-circle-diameter-value">0</span>
+                            </div>
+                            <input type="range" id="movable-circle-diameter" min="0" max="20" step="0.5" value="0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Opacity:</label>
+                                <span class="slider-value" id="logo2-opacity-value">1.0</span>
+                            </div>
+                            <input type="range" id="logo2-opacity" min="0" max="1" step="0.1" value="1.0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Bg Circle:</label>
+                                <span class="slider-value" id="logo2-bg-size-value">0</span>
+                            </div>
+                            <input type="range" id="logo2-bg-size" min="0" max="25" step="0.5" value="0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>X Position:</label>
+                                <span class="slider-value" id="movable-circle-x-value">24.5</span>
+                            </div>
+                            <input type="range" id="movable-circle-x" min="0" max="49" step="0.1" value="24.5" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Y Position:</label>
+                                <span class="slider-value" id="movable-circle-y-value">24.5</span>
+                            </div>
+                            <input type="range" id="movable-circle-y" min="0" max="49" step="0.1" value="24.5" oninput="updateQR()">
+                        </div>
+                    </div>
+
+                    <!-- Full Width -->
+                    <div class="sub-group full-width">
+                        <div class="sub-group-title">Decorative Icon</div>
+                        <div class="control-group">
+                            <label for="icon-file">Upload Icon:</label>
+                            <input type="file" id="icon-file" accept="image/*" onchange="handleIconUpload(event)">
+                            <div id="icon-status" style="margin-top: 8px; font-size: 11px; color: #666;"></div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 10px;">
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label>Size:</label>
+                                    <span class="slider-value" id="icon-size-value">5</span>
+                                </div>
+                                <input type="range" id="icon-size" min="1" max="20" step="0.5" value="5" oninput="updateQR()">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label>Bg Circle:</label>
+                                    <span class="slider-value" id="icon-bg-size-value">0</span>
+                                </div>
+                                <input type="range" id="icon-bg-size" min="0" max="25" step="0.5" value="0" oninput="updateQR()">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label>Rotation:</label>
+                                    <span class="slider-value" id="icon-rotation-value">0</span>
+                                </div>
+                                <input type="range" id="icon-rotation" min="0" max="360" step="1" value="0" oninput="updateQR()">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label>X Position:</label>
+                                    <span class="slider-value" id="icon-x-value">14.5</span>
+                                </div>
+                                <input type="range" id="icon-x" min="-10" max="39" step="0.1" value="14.5" oninput="updateQR()">
+                            </div>
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <label>Y Position:</label>
+                                    <span class="slider-value" id="icon-y-value">14.5</span>
+                                </div>
+                                <input type="range" id="icon-y" min="-10" max="39" step="0.1" value="14.5" oninput="updateQR()">
+                            </div>
+                            <div style="display: flex; align-items: flex-end;">
+                                <button onclick="clearIcon()" style="background: #6c757d; width: 100%;">Clear Icon</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -342,46 +668,109 @@
             <!-- Layer 1: QR Code Layer (Bottom) -->
             <div class="control-section">
                 <h3>QR Code Layer</h3>
-                <div class="control-group">
-                    <label for="qr-url">Data (Alphanumeric):</label>
-                    <input type="text" id="qr-url" placeholder="0-9A-Z $%*+-./:  " value="HTTPS://LETS.GO/GOX7GCXLWM0Z7PUY.66" style="text-transform: uppercase;">
-                </div>
-                <div class="control-row">
-                    <div class="control-group">
-                        <label for="qr-version">Version:</label>
-                        <select id="qr-version">
-                            <option value="0">Auto</option>
-                            <option value="1">Version 1 (21x21)</option>
-                            <option value="2">Version 2 (25x25)</option>
-                            <option value="3" selected>Version 3 (29x29)</option>
-                            <option value="4">Version 4 (33x33)</option>
-                            <option value="5">Version 5 (37x37)</option>
-                        </select>
+                <div class="control-grid">
+                    <div class="sub-group full-width">
+                        <div class="sub-group-title">QR Data</div>
+                        <div class="control-group">
+                            <label for="qr-url">Data (Alphanumeric):</label>
+                            <input type="text" id="qr-url" placeholder="0-9A-Z $%*+-./:  " value="HTTPS://LETS.GO/GOX7GCXLWM0Z7PUY.66" style="text-transform: uppercase;">
+                        </div>
+                        <button onclick="generateQR()" style="margin-top: 10px;">Generate QR Code</button>
                     </div>
-                    <div class="control-group">
-                        <label for="qr-error-level">Error Correction:</label>
-                        <select id="qr-error-level">
-                            <option value="L">Low (7%)</option>
-                            <option value="M">Medium (15%)</option>
-                            <option value="Q">Quartile (25%)</option>
-                            <option value="H" selected>High (30%)</option>
-                        </select>
-                    </div>
-                </div>
-                <button onclick="generateQR()" style="margin-bottom: 20px;">Generate QR Code</button>
 
-                <div class="slider-group" style="margin-bottom: 15px;">
-                    <div class="slider-header">
-                        <label>Module Diameter:</label>
-                        <span class="slider-value" id="module-diameter-value">0.85</span>
+                    <div class="sub-group">
+                        <div class="sub-group-title">QR Configuration</div>
+                        <div class="control-group">
+                            <label for="qr-version">Version:</label>
+                            <select id="qr-version">
+                                <option value="0">Auto</option>
+                                <option value="1">Version 1 (21x21)</option>
+                                <option value="2">Version 2 (25x25)</option>
+                                <option value="3" selected>Version 3 (29x29)</option>
+                                <option value="4">Version 4 (33x33)</option>
+                                <option value="5">Version 5 (37x37)</option>
+                            </select>
+                        </div>
+                        <div class="control-group">
+                            <label for="qr-error-level">Error Correction:</label>
+                            <select id="qr-error-level">
+                                <option value="L">Low (7%)</option>
+                                <option value="M">Medium (15%)</option>
+                                <option value="Q">Quartile (25%)</option>
+                                <option value="H" selected>High (30%)</option>
+                            </select>
+                        </div>
                     </div>
-                    <input type="range" id="module-diameter" min="0.1" max="1.0" step="0.05" value="0.85" oninput="updateQR()">
-                </div>
 
-                <div class="checkbox-group">
-                    <input type="checkbox" id="show-grid" onchange="updateQR()">
-                    <label for="show-grid">Show Module Grid</label>
+                    <div class="sub-group">
+                        <div class="sub-group-title">Display Options</div>
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <label>Module Diameter:</label>
+                                <span class="slider-value" id="module-diameter-value">0.85</span>
+                            </div>
+                            <input type="range" id="module-diameter" min="0.1" max="1.0" step="0.05" value="0.85" oninput="updateQR()">
+                        </div>
+                        <div class="control-group" style="margin-top: 10px;">
+                            <label for="module-style">Module Style:</label>
+                            <select id="module-style" onchange="updateQR()">
+                                <option value="circle">Circle (圆形)</option>
+                                <option value="square">Square (方形)</option>
+                                <option value="smooth">Smooth (平滑-横纵)</option>
+                                <option value="radial-rings">Radial-Rings (同心环)</option>
+                                <option value="radial-lines">Radial-Lines (径向线)</option>
+                                <option value="radial-spiral">Radial-Spiral (螺旋线)</option>
+                                <option value="radial-expanding">Radial-Expanding (扩展环)</option>
+                                <option value="radial-blade">Radial-Blade (环形飞刀)</option>
+                            </select>
+                        </div>
+                        <div class="slider-group" id="param-ring-width" style="margin-top: 10px;">
+                            <div class="slider-header">
+                                <label>Ring Width:</label>
+                                <span class="slider-value" id="ring-width-value">0.8</span>
+                            </div>
+                            <input type="range" id="ring-width" min="0.1" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group" id="param-ring-spacing">
+                            <div class="slider-header">
+                                <label>Ring Spacing:</label>
+                                <span class="slider-value" id="ring-spacing-value">1.0</span>
+                            </div>
+                            <input type="range" id="ring-spacing" min="0.1" max="2.0" step="0.1" value="1.0" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group" id="param-width-multiplier">
+                            <div class="slider-header">
+                                <label>Width Multiplier:</label>
+                                <span class="slider-value" id="width-multiplier-value">1.10</span>
+                            </div>
+                            <input type="range" id="width-multiplier" min="1.0" max="2.0" step="0.05" value="1.10" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group" id="param-blade-step">
+                            <div class="slider-header">
+                                <label>Blade Step:</label>
+                                <span class="slider-value" id="blade-step-value">0.5</span>
+                            </div>
+                            <input type="range" id="blade-step" min="0.1" max="2.0" step="0.1" value="0.5" oninput="updateQR()">
+                        </div>
+                        <div class="slider-group" id="param-cut-threshold">
+                            <div class="slider-header">
+                                <label>Cut Threshold (%):</label>
+                                <span class="slider-value" id="cut-threshold-value">10</span>
+                            </div>
+                            <input type="range" id="cut-threshold" min="1" max="50" step="1" value="10" oninput="updateQR()">
+                        </div>
+                        <div class="checkbox-group" style="margin-top: 10px;">
+                            <input type="checkbox" id="show-grid" onchange="updateQR()">
+                            <label for="show-grid">Show Module Grid</label>
+                        </div>
+                    </div>
                 </div>
+            </div>
+
+            <!-- Settings Management -->
+            <div class="control-section">
+                <h3>Settings</h3>
+                <button onclick="clearSettings()" style="background: #ff9800;">Clear All Settings</button>
             </div>
         </div>
     </div>
@@ -392,6 +781,427 @@
     <script>
         let currentQRData = null;
         let currentMaskSVG = null;
+        let currentIconData = null;
+        let currentRotation = 0;
+        let currentZoom = 1.0;
+
+        // Undo/Redo history
+        let historyStack = [];
+        let historyIndex = -1;
+        const MAX_HISTORY = 50;
+        let captureTimeout = null;
+
+        // LocalStorage key
+        const STORAGE_KEY = 'qr-style-debugger-settings';
+
+        // Capture current state for undo
+        function captureState() {
+            const state = {
+                qrUrl: document.getElementById('qr-url').value,
+                qrVersion: document.getElementById('qr-version').value,
+                qrErrorLevel: document.getElementById('qr-error-level').value,
+                moduleDiameter: document.getElementById('module-diameter').value,
+                moduleStyle: document.getElementById('module-style').value,
+                ringWidth: document.getElementById('ring-width').value,
+                ringSpacing: document.getElementById('ring-spacing').value,
+                widthMultiplier: document.getElementById('width-multiplier').value,
+                bladeStep: document.getElementById('blade-step').value,
+                cutThreshold: document.getElementById('cut-threshold').value,
+                finderOuterDiameter: document.getElementById('finder-outer-diameter').value,
+                finderOuterStroke: document.getElementById('finder-outer-stroke').value,
+                finderInnerDiameter: document.getElementById('finder-inner-diameter').value,
+                alignOuterDiameter: document.getElementById('align-outer-diameter').value,
+                alignOuterStroke: document.getElementById('align-outer-stroke').value,
+                outerRingDiameter: document.getElementById('outer-ring-diameter').value,
+                outerRingStroke: document.getElementById('outer-ring-stroke').value,
+                centerCircleDiameter: document.getElementById('center-circle-diameter').value,
+                logo1Opacity: document.getElementById('logo1-opacity').value,
+                centerRingDiameter: document.getElementById('center-ring-diameter').value,
+                centerRingStroke: document.getElementById('center-ring-stroke').value,
+                centerRingGapAngle: document.getElementById('center-ring-gap-angle').value,
+                movableCircleDiameter: document.getElementById('movable-circle-diameter').value,
+                logo2Opacity: document.getElementById('logo2-opacity').value,
+                logo2BgSize: document.getElementById('logo2-bg-size').value,
+                movableCircleX: document.getElementById('movable-circle-x').value,
+                movableCircleY: document.getElementById('movable-circle-y').value,
+                iconSize: document.getElementById('icon-size').value,
+                iconBgSize: document.getElementById('icon-bg-size').value,
+                iconRotation: document.getElementById('icon-rotation').value,
+                iconX: document.getElementById('icon-x').value,
+                iconY: document.getElementById('icon-y').value,
+                iconData: currentIconData,
+                dotsCount: document.getElementById('dots-count').value,
+                dotsLevels: document.getElementById('dots-levels').value,
+                dotsMinSize: document.getElementById('dots-min-size').value,
+                dotsMaxSize: document.getElementById('dots-max-size').value,
+                dotsOpacity: document.getElementById('dots-opacity').value,
+                showGrid: document.getElementById('show-grid').checked,
+                rotation: currentRotation,
+                zoom: currentZoom,
+                svgMask: currentMaskSVG ? currentMaskSVG.outerHTML : null
+            };
+
+            // Remove all states after current index (for redo)
+            historyStack = historyStack.slice(0, historyIndex + 1);
+
+            // Add new state
+            historyStack.push(state);
+
+            // Limit history size
+            if (historyStack.length > MAX_HISTORY) {
+                historyStack.shift();
+            } else {
+                historyIndex++;
+            }
+        }
+
+        // Restore state from history
+        function restoreState(state) {
+            document.getElementById('qr-url').value = state.qrUrl;
+            document.getElementById('qr-version').value = state.qrVersion;
+            document.getElementById('qr-error-level').value = state.qrErrorLevel;
+            document.getElementById('module-diameter').value = state.moduleDiameter;
+            document.getElementById('module-style').value = state.moduleStyle || 'circle';
+            document.getElementById('ring-width').value = state.ringWidth || '0.8';
+            document.getElementById('ring-spacing').value = state.ringSpacing || '1.0';
+            document.getElementById('finder-outer-diameter').value = state.finderOuterDiameter;
+            document.getElementById('finder-outer-stroke').value = state.finderOuterStroke;
+            document.getElementById('finder-inner-diameter').value = state.finderInnerDiameter;
+            document.getElementById('align-outer-diameter').value = state.alignOuterDiameter;
+            document.getElementById('align-outer-stroke').value = state.alignOuterStroke;
+            document.getElementById('outer-ring-diameter').value = state.outerRingDiameter;
+            document.getElementById('outer-ring-stroke').value = state.outerRingStroke;
+            document.getElementById('center-circle-diameter').value = state.centerCircleDiameter;
+            document.getElementById('logo1-opacity').value = state.logo1Opacity;
+            document.getElementById('center-ring-diameter').value = state.centerRingDiameter;
+            document.getElementById('center-ring-stroke').value = state.centerRingStroke;
+            document.getElementById('center-ring-gap-angle').value = state.centerRingGapAngle || '0';
+            document.getElementById('movable-circle-diameter').value = state.movableCircleDiameter;
+            document.getElementById('logo2-opacity').value = state.logo2Opacity;
+            document.getElementById('logo2-bg-size').value = state.logo2BgSize || '0';
+            document.getElementById('movable-circle-x').value = state.movableCircleX;
+            document.getElementById('movable-circle-y').value = state.movableCircleY;
+            document.getElementById('icon-size').value = state.iconSize;
+            document.getElementById('icon-bg-size').value = state.iconBgSize || '0';
+            document.getElementById('icon-rotation').value = state.iconRotation;
+            document.getElementById('icon-x').value = state.iconX;
+            document.getElementById('icon-y').value = state.iconY;
+            currentIconData = state.iconData;
+            if (currentIconData) {
+                document.getElementById('icon-status').textContent = '✓ Restored from undo';
+                document.getElementById('icon-status').style.color = '#388e3c';
+            } else {
+                document.getElementById('icon-status').textContent = '';
+            }
+            document.getElementById('dots-count').value = state.dotsCount;
+            document.getElementById('dots-levels').value = state.dotsLevels;
+            document.getElementById('dots-min-size').value = state.dotsMinSize;
+            document.getElementById('dots-max-size').value = state.dotsMaxSize;
+            document.getElementById('dots-opacity').value = state.dotsOpacity;
+            document.getElementById('show-grid').checked = state.showGrid;
+            currentRotation = state.rotation;
+            currentZoom = state.zoom;
+            document.getElementById('zoom-slider').value = currentZoom;
+            document.getElementById('zoom-label').textContent = Math.round(currentZoom * 100) + '%';
+
+            // Restore SVG mask
+            if (state.svgMask) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(state.svgMask, 'image/svg+xml');
+                currentMaskSVG = doc.querySelector('svg');
+                document.getElementById('mask-status').textContent = '✓ Restored from undo';
+                document.getElementById('mask-status').style.color = '#388e3c';
+            } else {
+                currentMaskSVG = null;
+                document.getElementById('mask-status').textContent = '';
+            }
+
+            applyTransform();
+            updateQR();
+        }
+
+        // Undo action
+        function undo() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                restoreState(historyStack[historyIndex]);
+            }
+        }
+
+        // Redo action
+        function redo() {
+            if (historyIndex < historyStack.length - 1) {
+                historyIndex++;
+                restoreState(historyStack[historyIndex]);
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Ctrl-Z or Cmd-Z for undo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+            }
+            // Ctrl-Shift-Z or Cmd-Shift-Z for redo
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+                e.preventDefault();
+                redo();
+            }
+            // Also support Ctrl-Y for redo on Windows
+            if (e.ctrlKey && e.key === 'y' && !e.metaKey) {
+                e.preventDefault();
+                redo();
+            }
+        });
+
+        // Generate symmetric dots in 4 quadrants between QR rect and outer ring
+        function generateSymmetricDots(count, levels, moduleCount, outerRingDiameter, minSize, maxSize) {
+            const dots = [];
+            const centerX = moduleCount / 2;
+            const centerY = moduleCount / 2;
+            const outerRadius = outerRingDiameter / 2;
+
+            // Calculate size levels
+            const sizeLevels = [];
+            if (levels === 1) {
+                sizeLevels.push((minSize + maxSize) / 2);
+            } else {
+                for (let i = 0; i < levels; i++) {
+                    sizeLevels.push(minSize + (maxSize - minSize) * i / (levels - 1));
+                }
+            }
+
+            // Generate dots in first quadrant (top-right: x > center, y < center)
+            const quadrant1Dots = [];
+            let attempts = 0;
+            const maxAttempts = count * 100;
+
+            while (quadrant1Dots.length < count && attempts < maxAttempts) {
+                attempts++;
+
+                // Generate random position in first quadrant
+                const angle = Math.random() * Math.PI / 2; // 0 to 90 degrees
+                const radius = Math.sqrt(Math.random()) * outerRadius;
+
+                const x = centerX + radius * Math.cos(angle);
+                const y = centerY - radius * Math.sin(angle);
+
+                // Check if point is in valid area (outside QR rect, inside outer ring)
+                if (x > moduleCount || y < 0) {
+                    // Pick a size level
+                    const sizeLevel = Math.floor(Math.random() * levels);
+                    const size = sizeLevels[sizeLevel];
+                    quadrant1Dots.push({ x, y, r: size });
+                }
+            }
+
+            // Add dots from quadrant 1
+            quadrant1Dots.forEach(dot => dots.push(dot));
+
+            // Mirror to other 3 quadrants
+            quadrant1Dots.forEach(dot => {
+                const dx = dot.x - centerX;
+                const dy = dot.y - centerY;
+
+                // Quadrant 2 (top-left): mirror x
+                dots.push({ x: centerX - dx, y: dot.y, r: dot.r });
+
+                // Quadrant 3 (bottom-left): mirror x and y
+                dots.push({ x: centerX - dx, y: centerY - dy, r: dot.r });
+
+                // Quadrant 4 (bottom-right): mirror y
+                dots.push({ x: dot.x, y: centerY - dy, r: dot.r });
+            });
+
+            return dots;
+        }
+
+        // Save settings to localStorage
+        function saveSettings() {
+            const settings = {
+                qrUrl: document.getElementById('qr-url').value,
+                qrVersion: document.getElementById('qr-version').value,
+                qrErrorLevel: document.getElementById('qr-error-level').value,
+                moduleDiameter: document.getElementById('module-diameter').value,
+                moduleStyle: document.getElementById('module-style').value,
+                ringWidth: document.getElementById('ring-width').value,
+                ringSpacing: document.getElementById('ring-spacing').value,
+                widthMultiplier: document.getElementById('width-multiplier').value,
+                bladeStep: document.getElementById('blade-step').value,
+                cutThreshold: document.getElementById('cut-threshold').value,
+                finderOuterDiameter: document.getElementById('finder-outer-diameter').value,
+                finderOuterStroke: document.getElementById('finder-outer-stroke').value,
+                finderInnerDiameter: document.getElementById('finder-inner-diameter').value,
+                alignOuterDiameter: document.getElementById('align-outer-diameter').value,
+                alignOuterStroke: document.getElementById('align-outer-stroke').value,
+                outerRingDiameter: document.getElementById('outer-ring-diameter').value,
+                outerRingStroke: document.getElementById('outer-ring-stroke').value,
+                centerCircleDiameter: document.getElementById('center-circle-diameter').value,
+                logo1Opacity: document.getElementById('logo1-opacity').value,
+                centerRingDiameter: document.getElementById('center-ring-diameter').value,
+                centerRingStroke: document.getElementById('center-ring-stroke').value,
+                centerRingGapAngle: document.getElementById('center-ring-gap-angle').value,
+                movableCircleDiameter: document.getElementById('movable-circle-diameter').value,
+                logo2Opacity: document.getElementById('logo2-opacity').value,
+                logo2BgSize: document.getElementById('logo2-bg-size').value,
+                movableCircleX: document.getElementById('movable-circle-x').value,
+                movableCircleY: document.getElementById('movable-circle-y').value,
+                iconSize: document.getElementById('icon-size').value,
+                iconBgSize: document.getElementById('icon-bg-size').value,
+                iconRotation: document.getElementById('icon-rotation').value,
+                iconX: document.getElementById('icon-x').value,
+                iconY: document.getElementById('icon-y').value,
+                iconData: currentIconData,
+                dotsCount: document.getElementById('dots-count').value,
+                dotsLevels: document.getElementById('dots-levels').value,
+                dotsMinSize: document.getElementById('dots-min-size').value,
+                dotsMaxSize: document.getElementById('dots-max-size').value,
+                dotsOpacity: document.getElementById('dots-opacity').value,
+                showGrid: document.getElementById('show-grid').checked,
+                rotation: currentRotation,
+                zoom: currentZoom,
+                svgMask: currentMaskSVG ? currentMaskSVG.outerHTML : null
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        }
+
+        // Load settings from localStorage
+        function loadSettings() {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (!stored) return false;
+
+            try {
+                const settings = JSON.parse(stored);
+                document.getElementById('qr-url').value = settings.qrUrl || '';
+                document.getElementById('qr-version').value = settings.qrVersion || '3';
+                document.getElementById('qr-error-level').value = settings.qrErrorLevel || 'H';
+                document.getElementById('module-diameter').value = settings.moduleDiameter || '0.85';
+                document.getElementById('module-style').value = settings.moduleStyle || 'circle';
+                document.getElementById('ring-width').value = settings.ringWidth || '0.8';
+                document.getElementById('ring-spacing').value = settings.ringSpacing || '1.0';
+                document.getElementById('width-multiplier').value = settings.widthMultiplier || '1.10';
+                document.getElementById('blade-step').value = settings.bladeStep || '0.5';
+                document.getElementById('cut-threshold').value = settings.cutThreshold || '10';
+                document.getElementById('finder-outer-diameter').value = settings.finderOuterDiameter || '6.5';
+                document.getElementById('finder-outer-stroke').value = settings.finderOuterStroke || '0.8';
+                document.getElementById('finder-inner-diameter').value = settings.finderInnerDiameter || '3.0';
+                document.getElementById('align-outer-diameter').value = settings.alignOuterDiameter || '4.5';
+                document.getElementById('align-outer-stroke').value = settings.alignOuterStroke || '0.8';
+                document.getElementById('outer-ring-diameter').value = settings.outerRingDiameter || '0';
+                document.getElementById('outer-ring-stroke').value = settings.outerRingStroke || '1.0';
+                document.getElementById('center-circle-diameter').value = settings.centerCircleDiameter || '0';
+                document.getElementById('logo1-opacity').value = settings.logo1Opacity || '1.0';
+                document.getElementById('center-ring-diameter').value = settings.centerRingDiameter || '0';
+                document.getElementById('center-ring-stroke').value = settings.centerRingStroke || '1.0';
+                document.getElementById('center-ring-gap-angle').value = settings.centerRingGapAngle || '0';
+                document.getElementById('movable-circle-diameter').value = settings.movableCircleDiameter || '0';
+                document.getElementById('logo2-opacity').value = settings.logo2Opacity || '1.0';
+                document.getElementById('logo2-bg-size').value = settings.logo2BgSize || '0';
+                document.getElementById('movable-circle-x').value = settings.movableCircleX || '24.5';
+                document.getElementById('movable-circle-y').value = settings.movableCircleY || '24.5';
+                document.getElementById('icon-size').value = settings.iconSize || '5';
+                document.getElementById('icon-bg-size').value = settings.iconBgSize || '0';
+                document.getElementById('icon-rotation').value = settings.iconRotation || '0';
+                document.getElementById('icon-x').value = settings.iconX || '14.5';
+                document.getElementById('icon-y').value = settings.iconY || '14.5';
+                currentIconData = settings.iconData || null;
+                if (currentIconData) {
+                    document.getElementById('icon-status').textContent = '✓ Loaded from storage';
+                    document.getElementById('icon-status').style.color = '#388e3c';
+                }
+                document.getElementById('dots-count').value = settings.dotsCount || '0';
+                document.getElementById('dots-levels').value = settings.dotsLevels || '3';
+                document.getElementById('dots-min-size').value = settings.dotsMinSize || '0.1';
+                document.getElementById('dots-max-size').value = settings.dotsMaxSize || '0.5';
+                document.getElementById('dots-opacity').value = settings.dotsOpacity || '1.0';
+                document.getElementById('show-grid').checked = settings.showGrid || false;
+
+                // Load rotation and zoom
+                currentRotation = settings.rotation || 0;
+                currentZoom = settings.zoom || 1.0;
+                document.getElementById('zoom-slider').value = currentZoom;
+                document.getElementById('zoom-label').textContent = Math.round(currentZoom * 100) + '%';
+                applyTransform();
+
+                // Load SVG mask if exists
+                if (settings.svgMask) {
+                    try {
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(settings.svgMask, 'image/svg+xml');
+                        const svgElement = doc.querySelector('svg');
+                        if (svgElement) {
+                            currentMaskSVG = svgElement;
+                            const maskSize = svgElement.getAttribute('viewBox')?.split(' ')[2];
+                            document.getElementById('mask-status').textContent = `✓ Loaded from storage (${maskSize}x${maskSize})`;
+                            document.getElementById('mask-status').style.color = '#388e3c';
+                        }
+                    } catch (e) {
+                        console.error('Failed to load SVG mask:', e);
+                    }
+                }
+
+                return true;
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+                return false;
+            }
+        }
+
+        // Clear all settings
+        function clearSettings() {
+            if (confirm('Clear all saved settings and reset to defaults?')) {
+                localStorage.removeItem(STORAGE_KEY);
+                // Reset to defaults
+                document.getElementById('qr-url').value = 'HTTPS://LETS.GO/GOX7GCXLWM0Z7PUY.66';
+                document.getElementById('qr-version').value = '3';
+                document.getElementById('qr-error-level').value = 'H';
+                document.getElementById('module-diameter').value = '0.85';
+                document.getElementById('module-style').value = 'circle';
+                document.getElementById('ring-width').value = '0.8';
+                document.getElementById('ring-spacing').value = '1.0';
+                document.getElementById('finder-outer-diameter').value = '6.5';
+                document.getElementById('finder-outer-stroke').value = '0.8';
+                document.getElementById('finder-inner-diameter').value = '3.0';
+                document.getElementById('align-outer-diameter').value = '4.5';
+                document.getElementById('align-outer-stroke').value = '0.8';
+                document.getElementById('outer-ring-diameter').value = '0';
+                document.getElementById('outer-ring-stroke').value = '1.0';
+                document.getElementById('center-circle-diameter').value = '0';
+                document.getElementById('logo1-opacity').value = '1.0';
+                document.getElementById('center-ring-diameter').value = '0';
+                document.getElementById('center-ring-stroke').value = '1.0';
+                document.getElementById('center-ring-gap-angle').value = '0';
+                document.getElementById('movable-circle-diameter').value = '0';
+                document.getElementById('logo2-opacity').value = '1.0';
+                document.getElementById('logo2-bg-size').value = '0';
+                document.getElementById('movable-circle-x').value = '24.5';
+                document.getElementById('movable-circle-y').value = '24.5';
+                document.getElementById('icon-size').value = '5';
+                document.getElementById('icon-bg-size').value = '0';
+                document.getElementById('icon-rotation').value = '0';
+                document.getElementById('icon-x').value = '14.5';
+                document.getElementById('icon-y').value = '14.5';
+                currentIconData = null;
+                document.getElementById('icon-file').value = '';
+                document.getElementById('icon-status').textContent = '';
+                document.getElementById('dots-count').value = '0';
+                document.getElementById('dots-levels').value = '3';
+                document.getElementById('dots-min-size').value = '0.1';
+                document.getElementById('dots-max-size').value = '0.5';
+                document.getElementById('dots-opacity').value = '1.0';
+                document.getElementById('show-grid').checked = false;
+                currentRotation = 0;
+                currentZoom = 1.0;
+                document.getElementById('zoom-slider').value = 1.0;
+                document.getElementById('zoom-label').textContent = '100%';
+                currentMaskSVG = null;
+                document.getElementById('svg-mask-file').value = '';
+                document.getElementById('mask-status').textContent = '';
+                applyTransform();
+                generateQR();
+            }
+        }
 
         // Generate QR Code
         function generateQR() {
@@ -432,6 +1242,8 @@
                 }
 
                 updateQR();
+                saveSettings(); // Save settings after successful generation
+                captureState(); // Capture state for undo
             } catch (error) {
                 console.error('QR Generation Error:', error);
                 alert('Error generating QR code: ' + (error.message || error.toString()));
@@ -448,6 +1260,16 @@
             // Update slider values display
             document.getElementById('module-diameter-value').textContent =
                 document.getElementById('module-diameter').value;
+            document.getElementById('ring-width-value').textContent =
+                document.getElementById('ring-width').value;
+            document.getElementById('ring-spacing-value').textContent =
+                document.getElementById('ring-spacing').value;
+            document.getElementById('width-multiplier-value').textContent =
+                parseFloat(document.getElementById('width-multiplier').value).toFixed(2);
+            document.getElementById('blade-step-value').textContent =
+                document.getElementById('blade-step').value;
+            document.getElementById('cut-threshold-value').textContent =
+                document.getElementById('cut-threshold').value;
             document.getElementById('finder-outer-diameter-value').textContent =
                 document.getElementById('finder-outer-diameter').value;
             document.getElementById('finder-outer-stroke-value').textContent =
@@ -458,18 +1280,146 @@
                 document.getElementById('align-outer-diameter').value;
             document.getElementById('align-outer-stroke-value').textContent =
                 document.getElementById('align-outer-stroke').value;
+            document.getElementById('center-circle-diameter-value').textContent =
+                document.getElementById('center-circle-diameter').value;
+            document.getElementById('movable-circle-diameter-value').textContent =
+                document.getElementById('movable-circle-diameter').value;
+            document.getElementById('movable-circle-x-value').textContent =
+                document.getElementById('movable-circle-x').value;
+            document.getElementById('movable-circle-y-value').textContent =
+                document.getElementById('movable-circle-y').value;
+            document.getElementById('logo1-opacity-value').textContent =
+                document.getElementById('logo1-opacity').value;
+            document.getElementById('logo2-opacity-value').textContent =
+                document.getElementById('logo2-opacity').value;
+            document.getElementById('logo2-bg-size-value').textContent =
+                document.getElementById('logo2-bg-size').value;
+            document.getElementById('outer-ring-diameter-value').textContent =
+                document.getElementById('outer-ring-diameter').value;
+            document.getElementById('outer-ring-stroke-value').textContent =
+                document.getElementById('outer-ring-stroke').value;
+            document.getElementById('center-ring-diameter-value').textContent =
+                document.getElementById('center-ring-diameter').value;
+            document.getElementById('center-ring-stroke-value').textContent =
+                document.getElementById('center-ring-stroke').value;
+            document.getElementById('center-ring-gap-angle-value').textContent =
+                document.getElementById('center-ring-gap-angle').value;
+            document.getElementById('icon-size-value').textContent =
+                document.getElementById('icon-size').value;
+            document.getElementById('icon-bg-size-value').textContent =
+                document.getElementById('icon-bg-size').value;
+            document.getElementById('icon-rotation-value').textContent =
+                document.getElementById('icon-rotation').value + '°';
+            document.getElementById('icon-x-value').textContent =
+                document.getElementById('icon-x').value;
+            document.getElementById('icon-y-value').textContent =
+                document.getElementById('icon-y').value;
+            document.getElementById('dots-count-value').textContent =
+                document.getElementById('dots-count').value;
+            document.getElementById('dots-levels-value').textContent =
+                document.getElementById('dots-levels').value;
+            document.getElementById('dots-min-size-value').textContent =
+                document.getElementById('dots-min-size').value;
+            document.getElementById('dots-max-size-value').textContent =
+                document.getElementById('dots-max-size').value;
+            document.getElementById('dots-opacity-value').textContent =
+                document.getElementById('dots-opacity').value;
 
             // Get style parameters
             const moduleDiameter = parseFloat(document.getElementById('module-diameter').value);
+            const moduleStyle = document.getElementById('module-style').value;
+
+            // Show/hide parameters based on module style
+            const paramRingWidth = document.getElementById('param-ring-width');
+            const paramRingSpacing = document.getElementById('param-ring-spacing');
+            const paramWidthMultiplier = document.getElementById('param-width-multiplier');
+            const paramBladeStep = document.getElementById('param-blade-step');
+            const paramCutThreshold = document.getElementById('param-cut-threshold');
+
+            // Hide all radial parameters by default
+            paramRingWidth.style.display = 'none';
+            paramRingSpacing.style.display = 'none';
+            paramWidthMultiplier.style.display = 'none';
+            paramBladeStep.style.display = 'none';
+            paramCutThreshold.style.display = 'none';
+
+            // Show relevant parameters based on style
+            if (moduleStyle === 'radial-rings' || moduleStyle === 'radial-lines' || moduleStyle === 'radial-spiral') {
+                paramRingWidth.style.display = 'block';
+                paramRingSpacing.style.display = 'block';
+            } else if (moduleStyle === 'radial-expanding') {
+                paramRingWidth.style.display = 'block';
+                paramRingSpacing.style.display = 'block';
+                paramWidthMultiplier.style.display = 'block';
+            } else if (moduleStyle === 'radial-blade') {
+                paramBladeStep.style.display = 'block';
+                paramCutThreshold.style.display = 'block';
+            }
+
+            const ringWidth = parseFloat(document.getElementById('ring-width').value);
+            const ringSpacing = parseFloat(document.getElementById('ring-spacing').value);
+            const widthMultiplier = parseFloat(document.getElementById('width-multiplier').value);
+            const bladeStep = parseFloat(document.getElementById('blade-step').value);
+            const cutThreshold = parseFloat(document.getElementById('cut-threshold').value) / 100; // Convert % to ratio
             const finderOuterDiameter = parseFloat(document.getElementById('finder-outer-diameter').value);
             const finderOuterStroke = parseFloat(document.getElementById('finder-outer-stroke').value);
             const finderInnerDiameter = parseFloat(document.getElementById('finder-inner-diameter').value);
             const alignOuterDiameter = parseFloat(document.getElementById('align-outer-diameter').value);
             const alignOuterStroke = parseFloat(document.getElementById('align-outer-stroke').value);
+            const centerCircleDiameter = parseFloat(document.getElementById('center-circle-diameter').value);
+            const movableCircleDiameter = parseFloat(document.getElementById('movable-circle-diameter').value);
+            const movableCircleX = parseFloat(document.getElementById('movable-circle-x').value);
+            const movableCircleY = parseFloat(document.getElementById('movable-circle-y').value);
+            const logo1Opacity = parseFloat(document.getElementById('logo1-opacity').value);
+            const logo2Opacity = parseFloat(document.getElementById('logo2-opacity').value);
+            const logo2BgSize = parseFloat(document.getElementById('logo2-bg-size').value);
+            const outerRingDiameter = parseFloat(document.getElementById('outer-ring-diameter').value);
+            const outerRingStroke = parseFloat(document.getElementById('outer-ring-stroke').value);
+            const centerRingDiameter = parseFloat(document.getElementById('center-ring-diameter').value);
+            const centerRingStroke = parseFloat(document.getElementById('center-ring-stroke').value);
+            const centerRingGapAngle = parseFloat(document.getElementById('center-ring-gap-angle').value);
+            const iconSize = parseFloat(document.getElementById('icon-size').value);
+            const iconBgSize = parseFloat(document.getElementById('icon-bg-size').value);
+            const iconRotation = parseFloat(document.getElementById('icon-rotation').value);
+            const iconX = parseFloat(document.getElementById('icon-x').value);
+            const iconY = parseFloat(document.getElementById('icon-y').value);
+            const dotsCount = parseInt(document.getElementById('dots-count').value);
+            const dotsLevels = parseInt(document.getElementById('dots-levels').value);
+            const dotsMinSize = parseFloat(document.getElementById('dots-min-size').value);
+            const dotsMaxSize = parseFloat(document.getElementById('dots-max-size').value);
+            const dotsOpacity = parseFloat(document.getElementById('dots-opacity').value);
 
             // Update SVG viewBox with padding for decorative elements
-            const padding = 2; // modules of padding around QR code
-            canvas.setAttribute('viewBox', `${-padding} ${-padding} ${moduleCount + padding * 2} ${moduleCount + padding * 2}`);
+            const padding = 10; // modules of padding around QR code for drawing space
+            const viewBoxSize = moduleCount + padding * 2;
+            canvas.setAttribute('viewBox', `${-padding} ${-padding} ${viewBoxSize} ${viewBoxSize}`);
+
+            // Update movable circle and icon position ranges
+            document.getElementById('movable-circle-x').max = viewBoxSize;
+            document.getElementById('movable-circle-y').max = viewBoxSize;
+            // Icon position ranges: from -padding to moduleCount + padding
+            document.getElementById('icon-x').min = -padding;
+            document.getElementById('icon-x').max = moduleCount + padding;
+            document.getElementById('icon-y').min = -padding;
+            document.getElementById('icon-y').max = moduleCount + padding;
+
+            document.getElementById('movable-circle-x').value = Math.min(
+                parseFloat(document.getElementById('movable-circle-x').value),
+                viewBoxSize
+            );
+            document.getElementById('movable-circle-y').value = Math.min(
+                parseFloat(document.getElementById('movable-circle-y').value),
+                viewBoxSize
+            );
+            // Clamp icon position to new range
+            document.getElementById('icon-x').value = Math.max(-padding, Math.min(
+                parseFloat(document.getElementById('icon-x').value),
+                moduleCount + padding
+            ));
+            document.getElementById('icon-y').value = Math.max(-padding, Math.min(
+                parseFloat(document.getElementById('icon-y').value),
+                moduleCount + padding
+            ));
 
             // Clear canvas
             canvas.innerHTML = '';
@@ -532,26 +1482,397 @@
                 return Math.abs(row - alignCenter) <= 2 && Math.abs(col - alignCenter) <= 2;
             }
 
+            // Helper function to check if a module is dark and drawable
+            const isModuleDark = (row, col) => {
+                if (row < 0 || row >= moduleCount || col < 0 || col >= moduleCount) return false;
+                if (!currentQRData.modules[row][col]) return false;
+                if (isInFinderPattern(row, col)) return false;
+                if (isInAlignmentPattern(row, col)) return false;
+                return true;
+            };
+
             // Draw data modules
-            for (let row = 0; row < moduleCount; row++) {
-                for (let col = 0; col < moduleCount; col++) {
-                    if (!currentQRData.modules[row][col]) continue;
-                    if (isInFinderPattern(row, col)) continue;
-                    if (isInAlignmentPattern(row, col)) continue;
+            if (moduleStyle === 'radial-blade') {
+                // Ring Blade - allow multiple cuts per module, each cut < 10% area
+                const centerX = moduleCount / 2;
+                const centerY = moduleCount / 2;
+                const maxRadius = Math.sqrt(centerX * centerX + centerY * centerY) * 1.5;
+                const step = bladeStep;
 
-                    const cx = col + 0.5;
-                    const cy = row + 0.5;
-                    const r = moduleDiameter / 2;
+                // Helper: estimate cut ratio using sampling
+                function estimateCutRatio(row, col, radius) {
+                    const sampleSize = 10; // 10x10 = 100 sample points
+                    let totalPoints = 0;
+                    let pointsInCircle = 0;
 
-                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                    circle.setAttribute('cx', cx);
-                    circle.setAttribute('cy', cy);
-                    circle.setAttribute('r', r);
-                    circle.setAttribute('fill', 'black');
+                    for (let i = 0; i < sampleSize; i++) {
+                        for (let j = 0; j < sampleSize; j++) {
+                            const px = col + (i + 0.5) / sampleSize;
+                            const py = row + (j + 0.5) / sampleSize;
+                            const d = Math.sqrt(Math.pow(px - centerX, 2) + Math.pow(py - centerY, 2));
+                            totalPoints++;
+                            if (d < radius) pointsInCircle++;
+                        }
+                    }
 
-                    qrGroup.appendChild(circle);
+                    const ratioInCircle = pointsInCircle / totalPoints;
+                    const moduleX = col + 0.5;
+                    const moduleY = row + 0.5;
+                    const distFromCenter = Math.sqrt(Math.pow(moduleX - centerX, 2) + Math.pow(moduleY - centerY, 2));
+                    const centerInside = distFromCenter < radius;
+
+                    // Return: cutRatio and whether center is inside
+                    return {
+                        cutRatio: centerInside ? (1 - ratioInCircle) : ratioInCircle,
+                        centerInside: centerInside
+                    };
+                }
+
+                // Find two cuts for each module: inner cut and outer cut
+                const moduleCuts = new Map(); // key: "row,col", value: {innerRadius, outerRadius}
+
+                for (let row = 0; row < moduleCount; row++) {
+                    for (let col = 0; col < moduleCount; col++) {
+                        if (!currentQRData.modules[row][col]) continue;
+                        if (isInFinderPattern(row, col)) continue;
+                        if (isInAlignmentPattern(row, col)) continue;
+
+                        const corners = [
+                            { x: col, y: row },
+                            { x: col + 1, y: row },
+                            { x: col, y: row + 1 },
+                            { x: col + 1, y: row + 1 }
+                        ];
+
+                        const cornerDistances = corners.map(c =>
+                            Math.sqrt(Math.pow(c.x - centerX, 2) + Math.pow(c.y - centerY, 2))
+                        );
+
+                        const minDist = Math.min(...cornerDistances);
+                        const maxDist = Math.max(...cornerDistances);
+
+                        let lastInnerRadius = null;
+                        let firstOuterRadius = null;
+
+                        // From inside out: find last consecutive circle that cuts < threshold
+                        for (let radius = step; radius < maxRadius; radius += step) {
+                            if (radius > minDist && radius < maxDist) {
+                                const { cutRatio, centerInside } = estimateCutRatio(row, col, radius);
+
+                                // Inner side: cut away inner part
+                                if (!centerInside && cutRatio < cutThreshold) {
+                                    lastInnerRadius = radius; // Keep updating (last one wins)
+                                } else {
+                                    break; // Stop when we hit a circle that can't cut
+                                }
+                            }
+                        }
+
+                        // From outside in: find first consecutive circle that cuts < threshold
+                        // Start from after lastInnerRadius to avoid overlap
+                        const startRadius = lastInnerRadius ? lastInnerRadius + step : step;
+                        for (let radius = maxRadius; radius >= startRadius; radius -= step) {
+                            if (radius > minDist && radius < maxDist) {
+                                const { cutRatio, centerInside } = estimateCutRatio(row, col, radius);
+
+                                // Outer side: cut away outer part
+                                if (centerInside && cutRatio < cutThreshold) {
+                                    firstOuterRadius = radius; // Keep updating (first one wins)
+                                } else {
+                                    break; // Stop when we hit a circle that can't cut
+                                }
+                            }
+                        }
+
+                        // Store if we found valid cuts
+                        if (lastInnerRadius || firstOuterRadius) {
+                            const key = `${row},${col}`;
+                            moduleCuts.set(key, { innerCutRadius: lastInnerRadius, outerCutRadius: firstOuterRadius });
+                        }
+                    }
+                }
+
+                // Draw modules with their two cuts (keep middle annulus part)
+                for (let [key, { innerCutRadius, outerCutRadius }] of moduleCuts) {
+                    const [row, col] = key.split(',').map(Number);
+
+                    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+
+                    // Create annulus mask (ring shape)
+                    const maskId = 'blade-annulus-' + row + '-' + col;
+                    const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+                    mask.setAttribute('id', maskId);
+
+                    // Outer circle (white = keep inside)
+                    if (outerCutRadius) {
+                        const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        outerCircle.setAttribute('cx', centerX);
+                        outerCircle.setAttribute('cy', centerY);
+                        outerCircle.setAttribute('r', outerCutRadius);
+                        outerCircle.setAttribute('fill', 'white');
+                        mask.appendChild(outerCircle);
+                    } else {
+                        // No outer cut, keep everything
+                        const whiteRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                        whiteRect.setAttribute('x', col);
+                        whiteRect.setAttribute('y', row);
+                        whiteRect.setAttribute('width', 1);
+                        whiteRect.setAttribute('height', 1);
+                        whiteRect.setAttribute('fill', 'white');
+                        mask.appendChild(whiteRect);
+                    }
+
+                    // Inner circle (black = remove inside)
+                    if (innerCutRadius) {
+                        const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        innerCircle.setAttribute('cx', centerX);
+                        innerCircle.setAttribute('cy', centerY);
+                        innerCircle.setAttribute('r', innerCutRadius);
+                        innerCircle.setAttribute('fill', 'black');
+                        mask.appendChild(innerCircle);
+                    }
+
+                    defs.appendChild(mask);
+                    canvas.appendChild(defs);
+
+                    // Clip to module rectangle
+                    const clipPathId = 'blade-clip-' + row + '-' + col;
+                    const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+                    clipPath.setAttribute('id', clipPathId);
+
+                    const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    clipRect.setAttribute('x', col);
+                    clipRect.setAttribute('y', row);
+                    clipRect.setAttribute('width', 1);
+                    clipRect.setAttribute('height', 1);
+                    clipPath.appendChild(clipRect);
+
+                    defs.appendChild(clipPath);
+
+                    // Draw module with annulus mask clipped to rectangle
+                    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                    group.setAttribute('clip-path', `url(#${clipPathId})`);
+
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', col);
+                    rect.setAttribute('y', row);
+                    rect.setAttribute('width', 1);
+                    rect.setAttribute('height', 1);
+                    rect.setAttribute('fill', 'black');
+                    rect.setAttribute('mask', `url(#${maskId})`);
+                    group.appendChild(rect);
+
+                    qrGroup.appendChild(group);
+                }
+
+                // Draw modules that have no valid cuts
+                for (let row = 0; row < moduleCount; row++) {
+                    for (let col = 0; col < moduleCount; col++) {
+                        if (!currentQRData.modules[row][col]) continue;
+                        if (isInFinderPattern(row, col)) continue;
+                        if (isInAlignmentPattern(row, col)) continue;
+
+                        const key = `${row},${col}`;
+                        if (!moduleCuts.has(key)) {
+                            // No cuts, draw complete module
+                            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                            rect.setAttribute('x', col);
+                            rect.setAttribute('y', row);
+                            rect.setAttribute('width', 1);
+                            rect.setAttribute('height', 1);
+                            rect.setAttribute('fill', 'black');
+                            qrGroup.appendChild(rect);
+                        }
+                    }
+                }
+            } else if (moduleStyle.startsWith('radial-')) {
+                // Create clipPath with all black modules (shared by all radial styles)
+                const clipPathId = 'radial-clip-' + Date.now();
+                const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+                const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+                clipPath.setAttribute('id', clipPathId);
+
+                // Add all black modules to clipPath
+                for (let row = 0; row < moduleCount; row++) {
+                    for (let col = 0; col < moduleCount; col++) {
+                        if (!currentQRData.modules[row][col]) continue;
+                        if (isInFinderPattern(row, col)) continue;
+                        if (isInAlignmentPattern(row, col)) continue;
+
+                        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                        rect.setAttribute('x', col);
+                        rect.setAttribute('y', row);
+                        rect.setAttribute('width', 1);
+                        rect.setAttribute('height', 1);
+                        clipPath.appendChild(rect);
+                    }
+                }
+                defs.appendChild(clipPath);
+                canvas.appendChild(defs);
+
+                const centerX = moduleCount / 2;
+                const centerY = moduleCount / 2;
+                const maxRadius = Math.sqrt(centerX * centerX + centerY * centerY) * 1.5;
+
+                const radialGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+                radialGroup.setAttribute('clip-path', `url(#${clipPathId})`);
+
+                if (moduleStyle === 'radial-rings') {
+                    // Concentric rings
+                    for (let radius = ringSpacing / 2; radius < maxRadius; radius += ringSpacing) {
+                        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        circle.setAttribute('cx', centerX);
+                        circle.setAttribute('cy', centerY);
+                        circle.setAttribute('r', radius);
+                        circle.setAttribute('fill', 'none');
+                        circle.setAttribute('stroke', 'black');
+                        circle.setAttribute('stroke-width', ringWidth);
+                        radialGroup.appendChild(circle);
+                    }
+                } else if (moduleStyle === 'radial-lines') {
+                    // Radial lines from center
+                    const lineCount = Math.round(60 / ringSpacing); // Number of lines
+                    for (let i = 0; i < lineCount; i++) {
+                        const angle = (i / lineCount) * 2 * Math.PI;
+                        const x2 = centerX + Math.cos(angle) * maxRadius;
+                        const y2 = centerY + Math.sin(angle) * maxRadius;
+
+                        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                        line.setAttribute('x1', centerX);
+                        line.setAttribute('y1', centerY);
+                        line.setAttribute('x2', x2);
+                        line.setAttribute('y2', y2);
+                        line.setAttribute('stroke', 'black');
+                        line.setAttribute('stroke-width', ringWidth);
+                        radialGroup.appendChild(line);
+                    }
+                } else if (moduleStyle === 'radial-spiral') {
+                    // Archimedean spiral
+                    const spiralTurns = maxRadius / ringSpacing;
+                    const pointsPerTurn = 100;
+                    const totalPoints = Math.round(spiralTurns * pointsPerTurn);
+                    let pathData = '';
+
+                    for (let i = 0; i < totalPoints; i++) {
+                        const t = i / pointsPerTurn; // Number of turns
+                        const radius = t * ringSpacing;
+                        const angle = t * 2 * Math.PI;
+                        const x = centerX + Math.cos(angle) * radius;
+                        const y = centerY + Math.sin(angle) * radius;
+
+                        if (i === 0) {
+                            pathData = `M ${x} ${y}`;
+                        } else {
+                            pathData += ` L ${x} ${y}`;
+                        }
+                    }
+
+                    const spiral = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    spiral.setAttribute('d', pathData);
+                    spiral.setAttribute('fill', 'none');
+                    spiral.setAttribute('stroke', 'black');
+                    spiral.setAttribute('stroke-width', ringWidth);
+                    radialGroup.appendChild(spiral);
+                } else if (moduleStyle === 'radial-expanding') {
+                    // Expanding rings - ring width increases by multiplier from center outward, constant white gap
+                    const gap = ringSpacing; // Constant white gap between rings
+
+                    let currentWidth = ringWidth; // Starting width
+                    let outerEdge = 0; // Track outer edge of previous ring
+
+                    while (outerEdge < maxRadius) {
+                        // Calculate radius for this ring (center line of stroke)
+                        const innerEdge = outerEdge + (outerEdge === 0 ? 0 : gap);
+                        const radius = innerEdge + currentWidth / 2;
+
+                        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                        circle.setAttribute('cx', centerX);
+                        circle.setAttribute('cy', centerY);
+                        circle.setAttribute('r', radius);
+                        circle.setAttribute('fill', 'none');
+                        circle.setAttribute('stroke', 'black');
+                        circle.setAttribute('stroke-width', currentWidth);
+                        radialGroup.appendChild(circle);
+
+                        // Update for next ring
+                        outerEdge = radius + currentWidth / 2;
+                        currentWidth *= widthMultiplier; // Multiply width by the multiplier
+                    }
+                }
+
+                qrGroup.appendChild(radialGroup);
+            } else {
+                // Standard module rendering
+                for (let row = 0; row < moduleCount; row++) {
+                    for (let col = 0; col < moduleCount; col++) {
+                        if (!currentQRData.modules[row][col]) continue;
+                        if (isInFinderPattern(row, col)) continue;
+                        if (isInAlignmentPattern(row, col)) continue;
+
+                        const cx = col + 0.5;
+                        const cy = row + 0.5;
+                        const r = moduleDiameter / 2;
+
+                        if (moduleStyle === 'circle') {
+                            // Circle style
+                            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                            circle.setAttribute('cx', cx);
+                            circle.setAttribute('cy', cy);
+                            circle.setAttribute('r', r);
+                            circle.setAttribute('fill', 'black');
+                            qrGroup.appendChild(circle);
+                        } else if (moduleStyle === 'square') {
+                            // Square style
+                            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                            rect.setAttribute('x', col + (1 - moduleDiameter) / 2);
+                            rect.setAttribute('y', row + (1 - moduleDiameter) / 2);
+                            rect.setAttribute('width', moduleDiameter);
+                            rect.setAttribute('height', moduleDiameter);
+                            rect.setAttribute('fill', 'black');
+                            qrGroup.appendChild(rect);
+                        } else if (moduleStyle === 'smooth') {
+                        // Smooth/Fluid style - merge adjacent modules with rounded corners
+                        const hasLeft = isModuleDark(row, col - 1);
+                        const hasRight = isModuleDark(row, col + 1);
+                        const hasTop = isModuleDark(row - 1, col);
+                        const hasBottom = isModuleDark(row + 1, col);
+
+                        // Calculate rect dimensions based on neighbors
+                        let x = col + (1 - moduleDiameter) / 2;
+                        let y = row + (1 - moduleDiameter) / 2;
+                        let width = moduleDiameter;
+                        let height = moduleDiameter;
+
+                        // Extend to neighbors
+                        if (hasLeft) {
+                            width += (1 - moduleDiameter) / 2 + 0.5;
+                            x -= (1 - moduleDiameter) / 2 + 0.5;
+                        }
+                        if (hasRight) {
+                            width += (1 - moduleDiameter) / 2 + 0.5;
+                        }
+                        if (hasTop) {
+                            height += (1 - moduleDiameter) / 2 + 0.5;
+                            y -= (1 - moduleDiameter) / 2 + 0.5;
+                        }
+                        if (hasBottom) {
+                            height += (1 - moduleDiameter) / 2 + 0.5;
+                        }
+
+                        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                        rect.setAttribute('x', x);
+                        rect.setAttribute('y', y);
+                        rect.setAttribute('width', width);
+                        rect.setAttribute('height', height);
+                        rect.setAttribute('rx', r);
+                        rect.setAttribute('ry', r);
+                        rect.setAttribute('fill', 'black');
+                        qrGroup.appendChild(rect);
+                        }
+                    }
                 }
             }
+
 
             // Draw finder patterns
             finderPositions.forEach(pos => {
@@ -598,6 +1919,126 @@
 
             canvas.appendChild(qrGroup);
 
+            // Draw Outer Ring - on top layer, not masked
+            if (outerRingDiameter > 0) {
+                const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                outerRing.setAttribute('cx', moduleCount / 2);
+                outerRing.setAttribute('cy', moduleCount / 2);
+                outerRing.setAttribute('r', outerRingDiameter / 2);
+                outerRing.setAttribute('fill', 'none');
+                outerRing.setAttribute('stroke', 'black');
+                outerRing.setAttribute('stroke-width', outerRingStroke);
+                canvas.appendChild(outerRing);
+            }
+
+            // Draw Center Ring (around Logo 1) - 3/4 arc with configurable gap angle
+            if (centerRingDiameter > 0) {
+                const cx = moduleCount / 2;
+                const cy = moduleCount / 2;
+                const r = centerRingDiameter / 2;
+
+                // Gap angle: user angle is from 12 o'clock (top), need to convert to SVG angle (from 3 o'clock)
+                // Arc starts 90 degrees after gap position (clockwise), draws 270 degrees
+                const startAngleDeg = centerRingGapAngle + 90;  // End of gap, start of arc
+                const endAngleDeg = centerRingGapAngle;  // Start of gap, end of arc
+
+                // Convert to radians and adjust for SVG coordinate system (0° = 3 o'clock)
+                const startAngleRad = (startAngleDeg - 90) * Math.PI / 180;
+                const endAngleRad = (endAngleDeg - 90) * Math.PI / 180;
+
+                const startX = cx + r * Math.cos(startAngleRad);
+                const startY = cy + r * Math.sin(startAngleRad);
+                const endX = cx + r * Math.cos(endAngleRad);
+                const endY = cy + r * Math.sin(endAngleRad);
+
+                // Create 270-degree arc path (large-arc-flag=1 for >180°, sweep-flag=1 for clockwise)
+                const pathData = `M ${startX} ${startY} A ${r} ${r} 0 1 1 ${endX} ${endY}`;
+
+                const centerRing = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                centerRing.setAttribute('d', pathData);
+                centerRing.setAttribute('fill', 'none');
+                centerRing.setAttribute('stroke', 'black');
+                centerRing.setAttribute('stroke-width', centerRingStroke);
+                canvas.appendChild(centerRing);
+            }
+
+            // Draw Logo 1 (center placeholder) - on top layer, not masked
+            if (centerCircleDiameter > 0) {
+                const centerLogo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                centerLogo.setAttribute('cx', moduleCount / 2);
+                centerLogo.setAttribute('cy', moduleCount / 2);
+                centerLogo.setAttribute('r', centerCircleDiameter / 2);
+                centerLogo.setAttribute('fill', 'black');
+                centerLogo.setAttribute('fill-opacity', logo1Opacity);
+                canvas.appendChild(centerLogo);
+            }
+
+            // Draw Logo 2 Background Circle - white background for logo 2
+            if (movableCircleDiameter > 0 && logo2BgSize > 0) {
+                const logo2BgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                logo2BgCircle.setAttribute('cx', movableCircleX);
+                logo2BgCircle.setAttribute('cy', movableCircleY);
+                logo2BgCircle.setAttribute('r', logo2BgSize / 2);
+                logo2BgCircle.setAttribute('fill', 'white');
+                canvas.appendChild(logo2BgCircle);
+            }
+
+            // Draw Logo 2 (movable placeholder) - on top layer, not masked
+            if (movableCircleDiameter > 0) {
+                const movableLogo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                movableLogo.setAttribute('cx', movableCircleX);
+                movableLogo.setAttribute('cy', movableCircleY);
+                movableLogo.setAttribute('r', movableCircleDiameter / 2);
+                movableLogo.setAttribute('fill', 'black');
+                movableLogo.setAttribute('fill-opacity', logo2Opacity);
+                canvas.appendChild(movableLogo);
+            }
+
+            // Draw Icon Background Circle - white background for icon
+            if (currentIconData && iconBgSize > 0) {
+                const bgCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                bgCircle.setAttribute('cx', iconX);
+                bgCircle.setAttribute('cy', iconY);
+                bgCircle.setAttribute('r', iconBgSize / 2);
+                bgCircle.setAttribute('fill', 'white');
+                canvas.appendChild(bgCircle);
+            }
+
+            // Draw Icon - on top layer, not masked
+            if (currentIconData) {
+                const icon = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+                icon.setAttributeNS('http://www.w3.org/1999/xlink', 'href', currentIconData);
+                icon.setAttribute('x', iconX - iconSize / 2);
+                icon.setAttribute('y', iconY - iconSize / 2);
+                icon.setAttribute('width', iconSize);
+                icon.setAttribute('height', iconSize);
+                // Apply rotation around icon center
+                icon.setAttribute('transform', `rotate(${iconRotation} ${iconX} ${iconY})`);
+                canvas.appendChild(icon);
+            }
+
+            // Draw Symmetric Dots - between QR rect and outer ring
+            if (dotsCount > 0 && outerRingDiameter > 0) {
+                const dots = generateSymmetricDots(
+                    dotsCount,
+                    dotsLevels,
+                    moduleCount,
+                    outerRingDiameter,
+                    dotsMinSize,
+                    dotsMaxSize
+                );
+
+                dots.forEach(dot => {
+                    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                    circle.setAttribute('cx', dot.x);
+                    circle.setAttribute('cy', dot.y);
+                    circle.setAttribute('r', dot.r);
+                    circle.setAttribute('fill', 'black');
+                    circle.setAttribute('fill-opacity', dotsOpacity);
+                    canvas.appendChild(circle);
+                });
+            }
+
             // Draw module grid if enabled
             const showGrid = document.getElementById('show-grid').checked;
             if (showGrid) {
@@ -628,6 +2069,15 @@
 
                 canvas.appendChild(gridGroup);
             }
+
+            // Auto-save settings after updating QR
+            saveSettings();
+
+            // Debounced state capture for undo (500ms after last change)
+            clearTimeout(captureTimeout);
+            captureTimeout = setTimeout(() => {
+                captureState();
+            }, 500);
         }
 
         // Handle SVG Mask File Upload
@@ -684,6 +2134,7 @@
                     statusDiv.textContent = `✓ Loaded: ${file.name} (${maskSize}x${maskSize})`;
                     statusDiv.style.color = '#388e3c';
                     updateQR();
+                    saveSettings(); // Save mask to localStorage
                 } catch (error) {
                     statusDiv.textContent = `⚠️ ${error.message}`;
                     statusDiv.style.color = '#d32f2f';
@@ -711,8 +2162,73 @@
             updateQR();
         }
 
+        // Handle Icon Upload
+        function handleIconUpload(event) {
+            const file = event.target.files[0];
+            const statusDiv = document.getElementById('icon-status');
+
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                statusDiv.textContent = '⚠️ Please select an image file';
+                statusDiv.style.color = '#d32f2f';
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                currentIconData = e.target.result;
+                statusDiv.textContent = `✓ Loaded: ${file.name}`;
+                statusDiv.style.color = '#388e3c';
+                updateQR();
+                saveSettings();
+            };
+
+            reader.onerror = function() {
+                statusDiv.textContent = '⚠️ Failed to read file';
+                statusDiv.style.color = '#d32f2f';
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        // Clear Icon
+        function clearIcon() {
+            currentIconData = null;
+            const fileInput = document.getElementById('icon-file');
+            const statusDiv = document.getElementById('icon-status');
+
+            if (fileInput) fileInput.value = '';
+            if (statusDiv) statusDiv.textContent = '';
+
+            updateQR();
+            saveSettings();
+        }
+
+        // Rotate preview (45° increments)
+        function rotatePreview(degrees) {
+            currentRotation += degrees;
+            applyTransform();
+            saveSettings();
+        }
+
+        // Set zoom level
+        function setZoom(scale) {
+            currentZoom = parseFloat(scale);
+            document.getElementById('zoom-label').textContent = Math.round(currentZoom * 100) + '%';
+            applyTransform();
+            saveSettings();
+        }
+
+        // Apply transform to canvas
+        function applyTransform() {
+            const canvas = document.getElementById('qr-canvas');
+            canvas.style.transform = `rotate(${currentRotation}deg) scale(${currentZoom})`;
+        }
+
         // Initialize with a default QR code
         window.addEventListener('load', () => {
+            loadSettings(); // Load saved settings if available
             generateQR();
         });
     </script>
