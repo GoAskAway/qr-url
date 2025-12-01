@@ -140,30 +140,58 @@
 
         input[type="range"] {
             width: 100%;
-            height: 4px;
+            height: 24px; /* Increased for better touch target */
             border-radius: 2px;
-            background: #ddd;
+            background: transparent;
             outline: none;
             -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
+        }
+
+        input[type="range"]::-moz-range-track {
+            width: 100%;
+            height: 4px;
+            background: #ddd;
+            border-radius: 2px;
         }
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
             background: #2196f3;
             cursor: pointer;
+            margin-top: -7px; /* Center thumb on track */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
 
         input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 50%;
             background: #2196f3;
             cursor: pointer;
             border: none;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        input[type="range"]:hover::-webkit-slider-thumb {
+            background: #1976d2;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        input[type="range"]:hover::-moz-range-thumb {
+            background: #1976d2;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         }
 
         button {
@@ -256,27 +284,47 @@
         <div class="controls-column">
             <!-- Layer 3: Decorative Layer (Top) -->
             <div class="control-section">
-                <h3>Decorative Layer - Finder Pattern Style</h3>
-                <div class="slider-group">
-                    <div class="slider-header">
-                        <label>Outer Ring Diameter:</label>
-                        <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
+                <h3>Decorative Layer</h3>
+                <div style="margin-bottom: 20px;">
+                    <div style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 10px;">Finder Pattern (3 corners)</div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Outer Ring Diameter:</label>
+                            <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
+                        </div>
+                        <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
                     </div>
-                    <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Outer Ring Stroke:</label>
+                            <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
+                        </div>
+                        <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                    </div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Inner Circle Diameter:</label>
+                            <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
+                        </div>
+                        <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
+                    </div>
                 </div>
-                <div class="slider-group">
-                    <div class="slider-header">
-                        <label>Outer Ring Stroke:</label>
-                        <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
+                <div>
+                    <div style="font-weight: 600; font-size: 13px; color: #555; margin-bottom: 10px;">Alignment Pattern (center)</div>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Outer Ring Diameter:</label>
+                            <span class="slider-value" id="align-outer-diameter-value">4.5</span>
+                        </div>
+                        <input type="range" id="align-outer-diameter" min="3.5" max="5.0" step="0.1" value="4.5" oninput="updateQR()">
                     </div>
-                    <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
-                </div>
-                <div class="slider-group">
-                    <div class="slider-header">
-                        <label>Inner Circle Diameter:</label>
-                        <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <label>Outer Ring Stroke:</label>
+                            <span class="slider-value" id="align-outer-stroke-value">0.8</span>
+                        </div>
+                        <input type="range" id="align-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
                     </div>
-                    <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
                 </div>
             </div>
 
@@ -406,12 +454,18 @@
                 document.getElementById('finder-outer-stroke').value;
             document.getElementById('finder-inner-diameter-value').textContent =
                 document.getElementById('finder-inner-diameter').value;
+            document.getElementById('align-outer-diameter-value').textContent =
+                document.getElementById('align-outer-diameter').value;
+            document.getElementById('align-outer-stroke-value').textContent =
+                document.getElementById('align-outer-stroke').value;
 
             // Get style parameters
             const moduleDiameter = parseFloat(document.getElementById('module-diameter').value);
             const finderOuterDiameter = parseFloat(document.getElementById('finder-outer-diameter').value);
             const finderOuterStroke = parseFloat(document.getElementById('finder-outer-stroke').value);
             const finderInnerDiameter = parseFloat(document.getElementById('finder-inner-diameter').value);
+            const alignOuterDiameter = parseFloat(document.getElementById('align-outer-diameter').value);
+            const alignOuterStroke = parseFloat(document.getElementById('align-outer-stroke').value);
 
             // Update SVG viewBox with padding for decorative elements
             const padding = 2; // modules of padding around QR code
@@ -523,14 +577,14 @@
             // Draw alignment pattern (if exists)
             // Alignment pattern structure: 5x5 outer, 3x3 middle space, 1x1 center dot
             if (alignmentPosition) {
-                // Outer ring (approximately 4.5 modules diameter for 5x5 area)
+                // Outer ring (adjustable diameter)
                 const alignOuterRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 alignOuterRing.setAttribute('cx', alignmentPosition.col);
                 alignOuterRing.setAttribute('cy', alignmentPosition.row);
-                alignOuterRing.setAttribute('r', 2.25); // diameter ~4.5 modules
+                alignOuterRing.setAttribute('r', alignOuterDiameter / 2);
                 alignOuterRing.setAttribute('fill', 'none');
                 alignOuterRing.setAttribute('stroke', 'black');
-                alignOuterRing.setAttribute('stroke-width', finderOuterStroke);
+                alignOuterRing.setAttribute('stroke-width', alignOuterStroke);
                 qrGroup.appendChild(alignOuterRing);
 
                 // Inner circle (1x1 module = single dot)
