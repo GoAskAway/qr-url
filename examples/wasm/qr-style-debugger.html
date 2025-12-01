@@ -521,22 +521,23 @@
             });
 
             // Draw alignment pattern (if exists)
+            // Alignment pattern structure: 5x5 outer, 3x3 middle space, 1x1 center dot
             if (alignmentPosition) {
-                // Outer ring (scaled to 5/7 of finder pattern)
+                // Outer ring (approximately 4.5 modules diameter for 5x5 area)
                 const alignOuterRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 alignOuterRing.setAttribute('cx', alignmentPosition.col);
                 alignOuterRing.setAttribute('cy', alignmentPosition.row);
-                alignOuterRing.setAttribute('r', (finderOuterDiameter * 5 / 7) / 2);
+                alignOuterRing.setAttribute('r', 2.25); // diameter ~4.5 modules
                 alignOuterRing.setAttribute('fill', 'none');
                 alignOuterRing.setAttribute('stroke', 'black');
                 alignOuterRing.setAttribute('stroke-width', finderOuterStroke);
                 qrGroup.appendChild(alignOuterRing);
 
-                // Inner circle (scaled to 5/7 of finder pattern)
+                // Inner circle (1x1 module = single dot)
                 const alignInnerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 alignInnerCircle.setAttribute('cx', alignmentPosition.col);
                 alignInnerCircle.setAttribute('cy', alignmentPosition.row);
-                alignInnerCircle.setAttribute('r', (finderInnerDiameter * 5 / 7) / 2);
+                alignInnerCircle.setAttribute('r', moduleDiameter / 2); // same size as data modules
                 alignInnerCircle.setAttribute('fill', 'black');
                 qrGroup.appendChild(alignInnerCircle);
             }
