@@ -243,9 +243,46 @@
 
         <!-- Controls Column -->
         <div class="controls-column">
-            <!-- QR Generation -->
+            <!-- Layer 3: Decorative Layer (Top) -->
             <div class="control-section">
-                <h3>QR Code Generation</h3>
+                <h3>Decorative Layer - Finder Pattern Style</h3>
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <label>Outer Ring Diameter:</label>
+                        <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
+                    </div>
+                    <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <label>Outer Ring Stroke:</label>
+                        <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
+                    </div>
+                    <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
+                </div>
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <label>Inner Circle Diameter:</label>
+                        <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
+                    </div>
+                    <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
+                </div>
+            </div>
+
+            <!-- Layer 2: SVG Mask Layer (Middle) -->
+            <div class="control-section">
+                <h3>SVG Mask Layer</h3>
+                <div class="control-group">
+                    <label for="svg-mask-file">Upload SVG File:</label>
+                    <input type="file" id="svg-mask-file" accept=".svg,image/svg+xml" onchange="handleMaskUpload(event)">
+                    <div id="mask-status" style="margin-top: 8px; font-size: 11px; color: #666;"></div>
+                </div>
+                <button onclick="clearMask()" style="background: #6c757d;">Clear Mask</button>
+            </div>
+
+            <!-- Layer 1: QR Code Layer (Bottom) -->
+            <div class="control-section">
+                <h3>QR Code Layer - Generation</h3>
                 <div class="control-group">
                     <label for="qr-url">Data (Alphanumeric):</label>
                     <input type="text" id="qr-url" placeholder="0-9A-Z $%*+-./:  " value="HTTPS://LETS.GO/GOX7GCXLWM0Z7PUY.66" style="text-transform: uppercase;">
@@ -273,69 +310,22 @@
                 <button onclick="generateQR()">Generate QR Code</button>
             </div>
 
-                <!-- Module Style -->
-                <div class="control-section">
-                    <h3>Data Module Style</h3>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Diameter:</label>
-                            <span class="slider-value" id="module-diameter-value">0.85</span>
-                        </div>
-                        <input type="range" id="module-diameter" min="0.1" max="1.0" step="0.05" value="0.85" oninput="updateQR()">
+            <div class="control-section">
+                <h3>QR Code Layer - Data Module Style</h3>
+                <div class="slider-group">
+                    <div class="slider-header">
+                        <label>Diameter:</label>
+                        <span class="slider-value" id="module-diameter-value">0.85</span>
                     </div>
+                    <input type="range" id="module-diameter" min="0.1" max="1.0" step="0.05" value="0.85" oninput="updateQR()">
                 </div>
+            </div>
 
-                <!-- Finder Pattern Style -->
-                <div class="control-section">
-                    <h3>Finder Pattern Style</h3>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Outer Ring Diameter:</label>
-                            <span class="slider-value" id="finder-outer-diameter-value">6.5</span>
-                        </div>
-                        <input type="range" id="finder-outer-diameter" min="5.0" max="7.0" step="0.1" value="6.5" oninput="updateQR()">
-                    </div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Outer Ring Stroke:</label>
-                            <span class="slider-value" id="finder-outer-stroke-value">0.8</span>
-                        </div>
-                        <input type="range" id="finder-outer-stroke" min="0.2" max="2.0" step="0.1" value="0.8" oninput="updateQR()">
-                    </div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Inner Circle Diameter:</label>
-                            <span class="slider-value" id="finder-inner-diameter-value">3.0</span>
-                        </div>
-                        <input type="range" id="finder-inner-diameter" min="2.0" max="4.0" step="0.1" value="3.0" oninput="updateQR()">
-                    </div>
-                </div>
-
-                <!-- Module Grid -->
-                <div class="control-section">
-                    <h3>Module Grid</h3>
-                    <div class="checkbox-group">
-                        <input type="checkbox" id="show-grid" onchange="updateQR()">
-                        <label for="show-grid">Show Grid</label>
-                    </div>
-                    <div class="slider-group">
-                        <div class="slider-header">
-                            <label>Grid Opacity:</label>
-                            <span class="slider-value" id="grid-opacity-value">0.3</span>
-                        </div>
-                        <input type="range" id="grid-opacity" min="0.1" max="1.0" step="0.1" value="0.3" oninput="updateQR()">
-                    </div>
-                </div>
-
-                <!-- SVG Mask -->
-                <div class="control-section">
-                    <h3>SVG Mask (Optional)</h3>
-                    <div class="control-group">
-                        <label for="svg-mask-file">Upload SVG File:</label>
-                        <input type="file" id="svg-mask-file" accept=".svg,image/svg+xml" onchange="handleMaskUpload(event)">
-                        <div id="mask-status" style="margin-top: 8px; font-size: 11px; color: #666;"></div>
-                    </div>
-                    <button onclick="clearMask()" style="background: #6c757d;">Clear Mask</button>
+            <div class="control-section">
+                <h3>QR Code Layer - Module Grid</h3>
+                <div class="checkbox-group">
+                    <input type="checkbox" id="show-grid" onchange="updateQR()">
+                    <label for="show-grid">Show Grid</label>
                 </div>
             </div>
         </div>
@@ -409,8 +399,6 @@
                 document.getElementById('finder-outer-stroke').value;
             document.getElementById('finder-inner-diameter-value').textContent =
                 document.getElementById('finder-inner-diameter').value;
-            document.getElementById('grid-opacity-value').textContent =
-                document.getElementById('grid-opacity').value;
 
             // Get style parameters
             const moduleDiameter = parseFloat(document.getElementById('module-diameter').value);
@@ -518,9 +506,7 @@
             // Draw module grid if enabled
             const showGrid = document.getElementById('show-grid').checked;
             if (showGrid) {
-                const gridOpacity = parseFloat(document.getElementById('grid-opacity').value);
                 const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-                gridGroup.setAttribute('opacity', gridOpacity);
                 gridGroup.setAttribute('stroke', '#999');
                 gridGroup.setAttribute('stroke-width', '0.02');
                 gridGroup.setAttribute('fill', 'none');
