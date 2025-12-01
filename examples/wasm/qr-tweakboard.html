@@ -702,7 +702,7 @@
                     Export SVG Mask
                 </button>
                 <div class="mask-info" style="margin-top: 12px;">
-                    Exports a SVG with infinite scalability. Finder patterns, alignment pattern, and circular mask areas are <b>opaque black</b> (for custom design), while data module areas are <b>transparent</b>.
+                    Exports a SVG with infinite scalability. Only circular mask areas are <b>opaque black</b> (for custom design), while all other areas are <b>transparent</b>.
                 </div>
             </div>
         </div>
@@ -1898,32 +1898,14 @@
         function exportSVGMask() {
             // Use a reasonable default size (can be scaled infinitely anyway)
             const exportSize = 1000;
+            const version = parseInt(qrVersionSelect.value);
 
-            // Collect all hollow areas (finder patterns, alignment, circular masks)
+            // Collect only circular mask areas (no finder patterns, no alignment patterns)
             // Note: Using module coordinates (not pixels) for true vector graphics
-            const hollowRects = [];  // {x, y, w, h} for rectangular regions
+            const hollowRects = [];  // {x, y, w, h} for rectangular regions (masked modules)
             const hollowCircles = []; // {cx, cy, r} for circular regions
 
-            // 1. Finder patterns (3 corners, each 7x7 modules)
-            // Top-left
-            hollowRects.push({ x: 0, y: 0, w: 7, h: 7 });
-            // Top-right
-            hollowRects.push({ x: currentSize - 7, y: 0, w: 7, h: 7 });
-            // Bottom-left
-            hollowRects.push({ x: 0, y: currentSize - 7, w: 7, h: 7 });
-
-            // 2. Alignment pattern (only for version >= 2)
-            const version = parseInt(qrVersionSelect.value);
-            if (version >= 2) {
-                const alignmentCenters = { 2: 18, 3: 22, 4: 26, 5: 30 };
-                const alignCenter = alignmentCenters[version];
-                if (alignCenter) {
-                    // Alignment pattern is 5x5, centered at alignCenter
-                    hollowRects.push({ x: alignCenter - 2, y: alignCenter - 2, w: 5, h: 5 });
-                }
-            }
-
-            // 3. Center circular mask (if enabled and radius > 0)
+            // 1. Center circular mask (if enabled and radius > 0)
             const radius1Value = parseFloat(radiusSlider.value);
             if (maskCheckbox.checked && radius1Value > 0) {
                 // Center in module coordinates
@@ -1933,7 +1915,7 @@
                 hollowCircles.push({ cx, cy, r });
             }
 
-            // 4. Corner circular mask (if enabled and radius > 0)
+            // 2. Corner circular mask (if enabled and radius > 0)
             const radius2Value = parseFloat(radiusSlider2.value);
             if (maskCheckbox2.checked && radius2Value > 0) {
                 // Convert pixel center back to module coordinates
@@ -1943,7 +1925,7 @@
                 hollowCircles.push({ cx, cy, r });
             }
 
-            // 5. Collect masked codeword modules (white/blank areas)
+            // 3. Collect masked codeword modules (white/blank areas)
             const maskedModules = new Set();
             const codewordModules = currentCodewordModules || [];
             const totalCodewordsForMask = codewordModules.length;
@@ -2009,17 +1991,17 @@
             });
 
             // Build SVG
-            // Design: masked areas (finder, alignment, circles) = opaque (for custom design)
+            // Design: circular mask areas = opaque black (for custom design)
             //         data areas = transparent (expose data modules)
             // Using viewBox with module coordinates for true vector graphics
             // The exportSize only affects the default display size, not the vector data
             let svg = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${exportSize}" height="${exportSize}" viewBox="0 0 ${currentSize} ${currentSize}">
-  <!-- Masked areas: opaque black for custom design -->
+  <!-- Circular mask areas: opaque black for custom design -->
   <!-- viewBox uses module coordinates (${currentSize}x${currentSize}), making this truly scalable -->
 `;
 
-            // Add masked rectangles (finder patterns, alignment, masked modules)
+            // Add masked modules as rectangles
             hollowRects.forEach(rect => {
                 svg += `  <rect x="${rect.x.toFixed(2)}" y="${rect.y.toFixed(2)}" width="${rect.w.toFixed(2)}" height="${rect.h.toFixed(2)}" fill="black"/>\n`;
             });
