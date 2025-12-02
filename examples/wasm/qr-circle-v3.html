@@ -237,7 +237,9 @@
             <div class="info">
                 <strong>说明：</strong><br>
                 • 29×29 格子，中心 (14.5, 14.5)<br>
-                • 编码内容："HELLO QR"<br>
+                • 编码内容：https://lets.go/LXPB$2PI-W6JBZS$BL6<br>
+                • 编码模式：ALPHANUMERIC<br>
+                • 容错级别：H (30%)<br>
                 • 圆环：从半径 0.5 开始，每隔 0.5 个单位画一个圆<br>
                 • 放射线：从中心出发，每隔 3° 画一条线，共 120 条<br>
                 • 用于调试和可视化径向/切向关系
@@ -287,9 +289,9 @@
 
         // Generate real QR code using qrcode-generator library
         function generateQRPattern() {
-            // Create QR code with type 3 (29x29), error correction level L
-            const qr = qrcode(3, 'L');
-            qr.addData('HELLO QR');
+            // Create QR code with type 3 (29x29), error correction level H (30%)
+            const qr = qrcode(3, 'H');
+            qr.addData('https://lets.go/LXPB$2PI-W6JBZS$BL6');
             qr.make();
 
             const count = qr.getModuleCount();
