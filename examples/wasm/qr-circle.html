@@ -523,16 +523,19 @@
         // Original layer: rectangular coordinate system (red)
         const originalDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         originalDisplayLayer.setAttribute('id', 'original-display-layer');
+        originalDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
         svg.appendChild(originalDisplayLayer);
 
         // Manual layer: annular coordinate system (blue)
         const manualDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         manualDisplayLayer.setAttribute('id', 'manual-display-layer');
+        manualDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
         svg.appendChild(manualDisplayLayer);
 
         // Algorithm display layer: annular coordinate system (green)
         const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         algorithmDisplayLayer.setAttribute('id', 'algorithm-display-layer');
+        algorithmDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
         svg.appendChild(algorithmDisplayLayer);
 
         // Draw grid
