@@ -393,22 +393,22 @@
         svg.appendChild(algorithmLayer);
 
         // === Four-layer design (bottom to top) ===
-        // Layer 1: Original QR layer (red)
+        // Layer 1: Original QR layer (red + white background, fully opaque)
         const originalDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         originalDisplayLayer.setAttribute('id', 'layer-1-original');
-        originalDisplayLayer.setAttribute('opacity', '0.6');
+        originalDisplayLayer.setAttribute('opacity', '1'); // Fully opaque
         svg.appendChild(originalDisplayLayer);
 
-        // Layer 2: Functional mask layer (black, from uploaded SVG)
+        // Layer 2: Functional mask layer (white, fully opaque to hide data)
         const maskLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         maskLayer.setAttribute('id', 'layer-2-mask');
-        maskLayer.setAttribute('opacity', '0.8');
+        maskLayer.setAttribute('opacity', '1'); // Fully opaque
         svg.appendChild(maskLayer);
 
-        // Layer 3: Algorithm annular layer (green)
+        // Layer 3: Algorithm annular layer (green, fully opaque)
         const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         algorithmDisplayLayer.setAttribute('id', 'layer-3-algorithm');
-        algorithmDisplayLayer.setAttribute('opacity', '0.6');
+        algorithmDisplayLayer.setAttribute('opacity', '1'); // Fully opaque
         svg.appendChild(algorithmDisplayLayer);
 
         // Error detection layer: highlight insufficient coverage (highest z-index)
@@ -894,17 +894,17 @@
         function drawOriginalDisplay() {
             originalDisplayLayer.innerHTML = '';
 
+            // Draw all modules (both black and white for opaque background)
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
                     const isBlack = baseModuleState[`${row},${col}`];
-                    if (!isBlack) continue; // Only draw black modules
 
                     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                     rect.setAttribute('x', col);
                     rect.setAttribute('y', row);
                     rect.setAttribute('width', 1);
                     rect.setAttribute('height', 1);
-                    rect.setAttribute('fill', '#FF0000'); // Red
+                    rect.setAttribute('fill', isBlack ? '#FF0000' : '#FFFFFF'); // Red for black, white for white
                     rect.setAttribute('stroke', 'none');
                     rect.setAttribute('shape-rendering', 'crispEdges');
 
