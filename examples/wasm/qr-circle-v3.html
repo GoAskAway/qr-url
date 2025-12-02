@@ -948,13 +948,15 @@
         }
 
         // Helper: Draw circular alignment pattern on specified layer (ring pattern)
+        // 5x5 pattern: Black(1) - White(1) - Black(1) - White(1) - Black(1)
+        // Radii: outer=2.5, middle=1.5, center=0.5
         function drawCircularAlignmentPatternOnLayer(layer, centerX, centerY, color) {
             const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
             const maskId = `alignment-mask-${centerX}-${centerY}-${color}`;
             const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
             mask.setAttribute('id', maskId);
 
-            // Outer circle (white)
+            // Outer circle (white) - radius 2.5
             const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             outerCircle.setAttribute('cx', centerX);
             outerCircle.setAttribute('cy', centerY);
@@ -962,18 +964,26 @@
             outerCircle.setAttribute('fill', 'white');
             mask.appendChild(outerCircle);
 
-            // Inner circle (black - creates white ring)
+            // Middle circle (black) - radius 1.5, creates white ring
+            const middleCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            middleCircle.setAttribute('cx', centerX);
+            middleCircle.setAttribute('cy', centerY);
+            middleCircle.setAttribute('r', 1.5);
+            middleCircle.setAttribute('fill', 'black');
+            mask.appendChild(middleCircle);
+
+            // Inner circle (white) - radius 0.5, allows center dot to show
             const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             innerCircle.setAttribute('cx', centerX);
             innerCircle.setAttribute('cy', centerY);
-            innerCircle.setAttribute('r', 1.5);
-            innerCircle.setAttribute('fill', 'black');
+            innerCircle.setAttribute('r', 0.5);
+            innerCircle.setAttribute('fill', 'white');
             mask.appendChild(innerCircle);
 
             defs.appendChild(mask);
             layer.appendChild(defs);
 
-            // Draw the outer ring
+            // Draw the outer ring with mask
             const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             outerRing.setAttribute('cx', centerX);
             outerRing.setAttribute('cy', centerY);
@@ -982,11 +992,11 @@
             outerRing.setAttribute('mask', `url(#${maskId})`);
             layer.appendChild(outerRing);
 
-            // Draw the center dot
+            // Draw the center dot - radius 0.5
             const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             centerDot.setAttribute('cx', centerX);
             centerDot.setAttribute('cy', centerY);
-            centerDot.setAttribute('r', 1.5);
+            centerDot.setAttribute('r', 0.5);
             centerDot.setAttribute('fill', color);
             layer.appendChild(centerDot);
         }
