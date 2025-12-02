@@ -394,6 +394,7 @@
             cellState[cellInfo.id] = newState;
             saveCellState();
             drawCells();
+            drawManualDisplay(); // Update manual sector display
         }
 
         // Undo last operation
@@ -416,6 +417,7 @@
 
             saveCellState();
             drawCells();
+            drawManualDisplay(); // Update manual sector display
 
             // 强制浏览器重绘
             svg.getBoundingClientRect();
@@ -435,6 +437,7 @@
 
             saveCellState();
             drawCells();
+            drawManualDisplay(); // Update manual sector display
 
             // 强制浏览器重绘
             svg.getBoundingClientRect();
@@ -518,6 +521,22 @@
         algorithmLayer.setAttribute('id', 'algorithm-layer');
         algorithmLayer.setAttribute('opacity', '0.7'); // Semi-transparent for comparison
         svg.appendChild(algorithmLayer);
+
+        // === NEW: Three independent display layers (no clipping, pure coordinate systems) ===
+        // Original layer: rectangular coordinate system (red)
+        const originalDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        originalDisplayLayer.setAttribute('id', 'original-display-layer');
+        svg.appendChild(originalDisplayLayer);
+
+        // Manual layer: annular coordinate system (blue)
+        const manualDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        manualDisplayLayer.setAttribute('id', 'manual-display-layer');
+        svg.appendChild(manualDisplayLayer);
+
+        // Algorithm display layer: annular coordinate system (green)
+        const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        algorithmDisplayLayer.setAttribute('id', 'algorithm-display-layer');
+        svg.appendChild(algorithmDisplayLayer);
 
         // Draw grid
         function drawGrid() {
@@ -1042,6 +1061,118 @@
             console.log('[drawAlgorithmResult] Drew', drawnCount, 'complete sectors (pure annular segments)');
         }
 
+        // === NEW: Three independent display functions ===
+
+        // Draw original QR code (rectangular coordinate system, red)
+        function drawOriginalDisplay() {
+            originalDisplayLayer.innerHTML = '';
+
+            for (let row = 0; row < moduleCount; row++) {
+                for (let col = 0; col < moduleCount; col++) {
+                    const isBlack = baseModuleState[`${row},${col}`];
+                    if (!isBlack) continue; // Only draw black modules
+
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', col);
+                    rect.setAttribute('y', row);
+                    rect.setAttribute('width', 1);
+                    rect.setAttribute('height', 1);
+                    rect.setAttribute('fill', '#FF0000'); // Red
+                    rect.setAttribute('stroke', 'none');
+                    rect.setAttribute('shape-rendering', 'crispEdges');
+
+                    originalDisplayLayer.appendChild(rect);
+                }
+            }
+        }
+
+        // Draw manual sectors (annular coordinate system, blue)
+        // Aggregate cellState by sector and draw complete sectors
+        function drawManualDisplay() {
+            manualDisplayLayer.innerHTML = '';
+
+            // Aggregate cellState by sector (radial, ring)
+            const sectorVotes = {}; // { "radial:idx|ring:idx": { black: count, white: count } }
+
+            for (const [cellId, state] of Object.entries(cellState)) {
+                // Parse cellId: "grid:row,col|radial:idx|ring:idx"
+                const match = cellId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const sectorId = `radial:${match[1]}|ring:${match[2]}`;
+                if (!sectorVotes[sectorId]) {
+                    sectorVotes[sectorId] = { black: 0, white: 0 };
+                }
+
+                if (state) {
+                    sectorVotes[sectorId].black++;
+                } else {
+                    sectorVotes[sectorId].white++;
+                }
+            }
+
+            // Draw sectors based on majority vote
+            let drawnCount = 0;
+            for (const [sectorId, votes] of Object.entries(sectorVotes)) {
+                const isBlack = votes.black > votes.white;
+                if (!isBlack) continue; // Only draw black sectors
+
+                // Parse sector ID
+                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
+
+                // Create complete sector path
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', createCompleteSectorPath(radialIndex, ringIndex));
+                path.setAttribute('fill', '#0000FF'); // Blue
+                path.setAttribute('stroke', 'none');
+                path.setAttribute('shape-rendering', 'geometricPrecision');
+
+                manualDisplayLayer.appendChild(path);
+                drawnCount++;
+            }
+
+            console.log('[drawManualDisplay] Drew', drawnCount, 'manual sectors');
+        }
+
+        // Draw algorithm sectors (annular coordinate system, green)
+        function drawAlgorithmDisplay() {
+            algorithmDisplayLayer.innerHTML = '';
+
+            if (Object.keys(sectorColors).length === 0) {
+                console.log('[drawAlgorithmDisplay] No sector colors to draw');
+                return;
+            }
+
+            let drawnCount = 0;
+
+            for (const [sectorId, color] of Object.entries(sectorColors)) {
+                if (!color) continue; // Only draw black regions
+
+                // Parse sector ID: "radial:idx|ring:idx"
+                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
+
+                // Create complete sector path
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', createCompleteSectorPath(radialIndex, ringIndex));
+                path.setAttribute('fill', '#00FF00'); // Green
+                path.setAttribute('stroke', 'none');
+                path.setAttribute('shape-rendering', 'geometricPrecision');
+
+                algorithmDisplayLayer.appendChild(path);
+                drawnCount++;
+            }
+
+            console.log('[drawAlgorithmDisplay] Drew', drawnCount, 'algorithm sectors');
+        }
+
         // Check if position is in Finder Pattern
         function isInFinderPattern(row, col) {
             // Top-left (0-6, 0-6)
@@ -1379,9 +1510,17 @@
         drawModules();
         drawCells();
 
+        // Draw new independent display layers
+        drawOriginalDisplay();
+        drawManualDisplay();
+        // drawAlgorithmDisplay() will be called after algorithm runs
+
         // 默认隐藏白色环线层和算法层
         whiteRingLayer.style.display = 'none';
         algorithmLayer.style.display = 'none';
+
+        // 默认隐藏算法显示层（其他两个默认显示）
+        algorithmDisplayLayer.style.display = 'none';
 
         // Toggle controls
         document.getElementById('show-grid').addEventListener('change', (e) => {
@@ -1404,17 +1543,17 @@
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
-        // Layer controls (三原色图层控制)
+        // Layer controls (三原色图层控制 - 控制新的独立显示图层)
         document.getElementById('show-original').addEventListener('change', (e) => {
-            moduleLayer.style.display = e.target.checked ? 'block' : 'none';
+            originalDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         document.getElementById('show-manual').addEventListener('change', (e) => {
-            cellLayer.style.display = e.target.checked ? 'block' : 'none';
+            manualDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         document.getElementById('show-algorithm').addEventListener('change', (e) => {
-            algorithmLayer.style.display = e.target.checked ? 'block' : 'none';
+            algorithmDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         // Algorithm controls
@@ -1430,6 +1569,7 @@
             try {
                 const stats = await runConversionAlgorithm();
                 drawAlgorithmResult();
+                drawAlgorithmDisplay(); // Draw on new independent display layer
 
                 // Compare with manual edits if available
                 let compareStats = null;
@@ -1471,7 +1611,7 @@
 
                 // Auto enable display
                 checkbox.checked = true;
-                algorithmLayer.style.display = 'block';
+                algorithmDisplayLayer.style.display = 'block';
 
                 alert('算法执行完成！\n请使用"图层控制"复选框自由组合查看对比：\n🔴 红色 - 原始方形码点\n🔵 蓝色 - 人工扇环图像\n🟢 绿色 - 算法扇环图像');
             } catch (error) {
@@ -1580,6 +1720,8 @@
                 // Redraw
                 drawModules();
                 drawCells();
+                drawOriginalDisplay();
+                drawManualDisplay();
             }
         });
 
@@ -1645,6 +1787,8 @@
                     // Redraw
                     drawModules();
                     drawCells();
+                    drawOriginalDisplay();
+                    drawManualDisplay();
 
                     console.log('[Import] 设置已导入:', settings);
                     alert('设置导入成功！');
