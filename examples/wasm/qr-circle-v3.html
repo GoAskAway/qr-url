@@ -895,13 +895,139 @@
 
         // === NEW: Three independent display functions ===
 
+        // Helper: Draw circular finder pattern on specified layer
+        function drawCircularFinderPatternOnLayer(layer, centerX, centerY, color) {
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const maskId = `finder-mask-${centerX}-${centerY}-${color}`;
+            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+            mask.setAttribute('id', maskId);
+
+            // Outer circle (white)
+            const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerCircle.setAttribute('cx', centerX);
+            outerCircle.setAttribute('cy', centerY);
+            outerCircle.setAttribute('r', 3.5);
+            outerCircle.setAttribute('fill', 'white');
+            mask.appendChild(outerCircle);
+
+            // Middle circle (black - creates white ring)
+            const middleCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            middleCircle.setAttribute('cx', centerX);
+            middleCircle.setAttribute('cy', centerY);
+            middleCircle.setAttribute('r', 2.5);
+            middleCircle.setAttribute('fill', 'black');
+            mask.appendChild(middleCircle);
+
+            // Inner circle (white)
+            const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            innerCircle.setAttribute('cx', centerX);
+            innerCircle.setAttribute('cy', centerY);
+            innerCircle.setAttribute('r', 1.5);
+            innerCircle.setAttribute('fill', 'white');
+            mask.appendChild(innerCircle);
+
+            defs.appendChild(mask);
+            layer.appendChild(defs);
+
+            // Draw the outer ring
+            const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerRing.setAttribute('cx', centerX);
+            outerRing.setAttribute('cy', centerY);
+            outerRing.setAttribute('r', 3.5);
+            outerRing.setAttribute('fill', color);
+            outerRing.setAttribute('mask', `url(#${maskId})`);
+            layer.appendChild(outerRing);
+
+            // Draw the center dot
+            const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            centerDot.setAttribute('cx', centerX);
+            centerDot.setAttribute('cy', centerY);
+            centerDot.setAttribute('r', 1.5);
+            centerDot.setAttribute('fill', color);
+            layer.appendChild(centerDot);
+        }
+
+        // Helper: Draw circular alignment pattern on specified layer
+        function drawCircularAlignmentPatternOnLayer(layer, centerX, centerY, color) {
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const maskId = `alignment-mask-${centerX}-${centerY}-${color}`;
+            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+            mask.setAttribute('id', maskId);
+
+            // Outer circle (white)
+            const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerCircle.setAttribute('cx', centerX);
+            outerCircle.setAttribute('cy', centerY);
+            outerCircle.setAttribute('r', 2.5);
+            outerCircle.setAttribute('fill', 'white');
+            mask.appendChild(outerCircle);
+
+            // Inner circle (black - creates white ring)
+            const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            innerCircle.setAttribute('cx', centerX);
+            innerCircle.setAttribute('cy', centerY);
+            innerCircle.setAttribute('r', 1.5);
+            innerCircle.setAttribute('fill', 'black');
+            mask.appendChild(innerCircle);
+
+            defs.appendChild(mask);
+            layer.appendChild(defs);
+
+            // Draw the outer ring
+            const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerRing.setAttribute('cx', centerX);
+            outerRing.setAttribute('cy', centerY);
+            outerRing.setAttribute('r', 2.5);
+            outerRing.setAttribute('fill', color);
+            outerRing.setAttribute('mask', `url(#${maskId})`);
+            layer.appendChild(outerRing);
+
+            // Draw the center dot
+            const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            centerDot.setAttribute('cx', centerX);
+            centerDot.setAttribute('cy', centerY);
+            centerDot.setAttribute('r', 1.5);
+            centerDot.setAttribute('fill', color);
+            layer.appendChild(centerDot);
+        }
+
         // Draw original QR code (rectangular coordinate system, red)
         function drawOriginalDisplay() {
             originalDisplayLayer.innerHTML = '';
 
-            // Draw all modules (both black and white for opaque background)
+            // Define special pattern regions to exclude from rectangular drawing
+            const specialPatternModules = new Set();
+
+            // Finder pattern regions (7x7 + separator)
+            const finderRegions = [
+                { rowMin: 0, rowMax: 8, colMin: 0, colMax: 8 },      // Top-left
+                { rowMin: 0, rowMax: 8, colMin: 21, colMax: 29 },    // Top-right
+                { rowMin: 21, rowMax: 29, colMin: 0, colMax: 8 }     // Bottom-left
+            ];
+
+            finderRegions.forEach(region => {
+                for (let row = region.rowMin; row < region.rowMax; row++) {
+                    for (let col = region.colMin; col < region.colMax; col++) {
+                        if (row < moduleCount && col < moduleCount) {
+                            specialPatternModules.add(`${row},${col}`);
+                        }
+                    }
+                }
+            });
+
+            // Alignment pattern region (5x5 for QR v3)
+            for (let row = 20; row <= 24; row++) {
+                for (let col = 20; col <= 24; col++) {
+                    specialPatternModules.add(`${row},${col}`);
+                }
+            }
+
+            // Draw all regular modules (both black and white for opaque background)
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
+                    // Skip special pattern areas
+                    if (specialPatternModules.has(`${row},${col}`)) continue;
+
                     const isBlack = baseModuleState[`${row},${col}`];
 
                     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -916,6 +1042,19 @@
                     originalDisplayLayer.appendChild(rect);
                 }
             }
+
+            // Draw circular finder patterns (red color for original QR layer)
+            const finderCenters = [
+                { x: 3.5, y: 3.5 },      // Top-left
+                { x: 25.5, y: 3.5 },     // Top-right
+                { x: 3.5, y: 25.5 }      // Bottom-left
+            ];
+            finderCenters.forEach(center => {
+                drawCircularFinderPatternOnLayer(originalDisplayLayer, center.x, center.y, '#FF0000');
+            });
+
+            // Draw circular alignment pattern (red color for original QR layer)
+            drawCircularAlignmentPatternOnLayer(originalDisplayLayer, 22.5, 22.5, '#FF0000');
         }
 
 
