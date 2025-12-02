@@ -1308,12 +1308,17 @@
         }
 
         // Detect coverage errors - OPTIMIZED VERSION
+        // Checks BOTH black and white modules:
+        // - Black modules: coverage must be >= 75%
+        // - White modules: coverage must be <= 25%
         function detectCoverageErrors(checkAlgorithm = true) {
             console.log('[detectCoverageErrors] Starting OPTIMIZED detection...');
             const startTime = performance.now();
             const errors = [];
             const sampleSize = 10; // Reduced from 20 to 10 (100 samples instead of 400)
             let skippedCount = 0;
+            let blackErrors = 0;
+            let whiteErrors = 0;
 
             // MAJOR OPTIMIZATION: Pre-compute sector Sets once!
             const algorithmSectorsSet = checkAlgorithm ? getAlgorithmSectorsSet() : null;
@@ -1322,9 +1327,6 @@
 
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
-                    const isBlack = baseModuleState[`${row},${col}`];
-                    if (!isBlack) continue; // Only check black modules
-
                     // Skip finder pattern 7x7 regions
                     if (isInFinderPatternRegion(row, col)) {
                         skippedCount++;
@@ -1343,6 +1345,8 @@
                         continue;
                     }
 
+                    const isBlack = baseModuleState[`${row},${col}`] || false;
+
                     let coveredCount = 0;
                     const totalCount = sampleSize * sampleSize;
 
@@ -1360,33 +1364,58 @@
                     }
 
                     const coverage = coveredCount / totalCount;
-                    if (coverage < 0.75) { // Coverage < 75% (error > 25%)
-                        errors.push({ row, col, coverage });
+
+                    // Check coverage constraints based on module color
+                    let hasError = false;
+                    if (isBlack) {
+                        // Black module: coverage must be >= 75%
+                        if (coverage < 0.75) {
+                            hasError = true;
+                            blackErrors++;
+                        }
+                    } else {
+                        // White module: coverage must be <= 25%
+                        if (coverage > 0.25) {
+                            hasError = true;
+                            whiteErrors++;
+                        }
+                    }
+
+                    if (hasError) {
+                        errors.push({ row, col, coverage, isBlack });
                     }
                 }
             }
 
             const endTime = performance.now();
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
-            console.log(`[detectCoverageErrors] ✅ Found ${errors.length} errors in ${elapsed}s (skipped ${skippedCount} special/masked modules)`);
+            console.log(`[detectCoverageErrors] ✅ Found ${errors.length} errors in ${elapsed}s`);
+            console.log(`  - Black module errors (coverage < 75%): ${blackErrors}`);
+            console.log(`  - White module errors (coverage > 25%): ${whiteErrors}`);
+            console.log(`  - Skipped special/masked modules: ${skippedCount}`);
             return errors;
         }
 
         // Draw error markers on error layer
+        // Red border: black module with insufficient coverage (< 75%)
+        // Blue border: white module with excessive coverage (> 25%)
         function drawErrorMarkers(errors) {
             errorLayer.innerHTML = '';
 
             for (const error of errors) {
-                const { row, col, coverage } = error;
+                const { row, col, coverage, isBlack } = error;
 
-                // Draw a thick red border around the module
+                // Choose color based on error type
+                const errorColor = isBlack ? '#FF0000' : '#0066FF'; // Red for black, blue for white
+
+                // Draw a thick border around the module
                 const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttribute('x', col);
                 rect.setAttribute('y', row);
                 rect.setAttribute('width', 1);
                 rect.setAttribute('height', 1);
                 rect.setAttribute('fill', 'none');
-                rect.setAttribute('stroke', '#FF0000'); // Red
+                rect.setAttribute('stroke', errorColor);
                 rect.setAttribute('stroke-width', '0.08');
                 rect.setAttribute('opacity', '0.9');
 
@@ -1397,7 +1426,7 @@
                 text.setAttribute('x', col + 0.5);
                 text.setAttribute('y', row + 0.5);
                 text.setAttribute('font-size', '0.25');
-                text.setAttribute('fill', '#FF0000');
+                text.setAttribute('fill', errorColor);
                 text.setAttribute('text-anchor', 'middle');
                 text.setAttribute('dominant-baseline', 'middle');
                 text.textContent = Math.round(coverage * 100) + '%';
@@ -1868,7 +1897,7 @@
             const checkAlgorithm = algorithmDisplayLayer.style.display !== 'none';
 
             if (!checkAlgorithm) {
-                console.log('[Detection] 请先勾选算法扇环图层！');
+                alert('请先勾选算法扇环图层！');
                 button.disabled = false;
                 button.textContent = '检测覆盖率 (Detect Coverage)';
                 return;
@@ -1903,10 +1932,10 @@
                         errorLayer.style.display = 'block';
                     }
 
-                    console.log(`[Detection] 检测完成！发现 ${errors.length} 个覆盖不足的码点（<75%），错误率：${errorRate}%`);
+                    alert(`检测完成！\n发现 ${errors.length} 个覆盖不足的码点（<75%）\n错误率：${errorRate}%`);
                 } catch (error) {
                     console.error('[Detection] Error:', error);
-                    console.log('[Detection] 检测失败：' + error.message);
+                    alert('检测失败：' + error.message);
                 } finally {
                     button.disabled = false;
                     button.textContent = '检测覆盖率 (Detect Coverage)';
@@ -2007,7 +2036,7 @@
                     statusText.style.color = '#f44336';
                     button.disabled = false;
                     button.textContent = '测试识别 (Test QR)';
-                    console.log('[QR Test] 图像加载失败');
+                    alert('图像加载失败');
                 };
 
                 img.src = url;
@@ -2019,7 +2048,7 @@
                 statusText.style.color = '#f44336';
                 button.disabled = false;
                 button.textContent = '测试识别 (Test QR)';
-                console.log('[QR Test] 测试失败：' + error.message);
+                alert('测试失败：' + error.message);
             }
         });
 
@@ -2063,10 +2092,10 @@
                 document.getElementById('show-layer-3-algorithm').checked = true;
                 algorithmDisplayLayer.style.display = 'block';
 
-                console.log('[Algorithm] 算法执行完成！请使用"图层控制"复选框查看不同图层：1️⃣ 原始 QR 层 / 2️⃣ 功能性遮罩层 / 3️⃣ 算法扇环层 / 4️⃣ 修饰网格层');
+                alert('算法执行完成！\n请使用"图层控制"复选框查看不同图层：\n1️⃣ 原始 QR 层\n2️⃣ 功能性遮罩层\n3️⃣ 算法扇环层\n4️⃣ 修饰网格层');
             } catch (error) {
                 console.error('[Algorithm] Error:', error);
-                console.log('[Algorithm] 算法执行失败：' + error.message);
+                alert('算法执行失败：' + error.message);
             } finally {
                 button.disabled = false;
                 button.textContent = '运行算法 (Run Algorithm)';
@@ -2079,7 +2108,7 @@
             const ring = parseInt(prompt('输入 ring index (0-30):', '5'));
 
             if (isNaN(radial) || isNaN(ring)) {
-                console.log('[Debug] 无效的输入');
+                alert('无效的输入');
                 return;
             }
 
@@ -2101,7 +2130,7 @@
             console.log('🤖 算法结果:', algoEdits.length > 0 ? algoEdits : '无');
             console.log('========================================');
 
-            console.log(`[Debug] 调试完成！扇环颜色: ${color ? '黑色' : '白色'}, 算法结果: ${algoEdits.length} 个`);
+            alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n算法结果: ${algoEdits.length} 个`);
         });
 
         // ========== Functional Mask Layer Management ==========
@@ -2209,10 +2238,10 @@
                     document.getElementById('show-layer-2-mask').checked = true;
                     maskLayer.style.display = 'block';
 
-                    console.log(`[Mask] 遮罩已上传！圆形: ${maskData.circles.length} 个, 矩形: ${maskData.rects.length} 个`);
+                    alert(`遮罩已上传！\n圆形: ${maskData.circles.length} 个\n矩形: ${maskData.rects.length} 个`);
                 } catch (error) {
                     console.error('[Mask] Upload error:', error);
-                    console.log('[Mask] 上传失败：' + error.message);
+                    alert('上传失败：' + error.message);
                 }
             };
             reader.readAsText(file);
@@ -2225,7 +2254,8 @@
                 maskLayer.innerHTML = '';
                 localStorage.removeItem(STORAGE_KEY_MASK);
                 document.getElementById('upload-mask').value = '';
-                console.log('[Mask] 遮罩已清除');
+                console.log('[Mask] Cleared');
+                alert('遮罩已清除');
             }
         });
 
