@@ -175,21 +175,15 @@
             <div class="controls">
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-layer-1-original" checked>
-                        <span style="color: #FF0000; font-weight: bold;">1️⃣ 原始 QR 层</span>
+                        <input type="checkbox" id="show-layer-4-decoration">
+                        <span style="color: #FFFFFF; font-weight: bold; text-shadow: 0 0 2px #000;">4️⃣ 修饰网格层</span>
                     </label>
                 </div>
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-layer-2-mask">
-                        <span style="color: #888888; font-weight: bold;">2️⃣ 功能性遮罩层（留白）</span>
+                        <input type="checkbox" id="show-layer-3-algorithm">
+                        <span style="color: #00FF00; font-weight: bold;">3️⃣ 算法扇环层</span>
                     </label>
-                    <div style="margin-left: 24px; margin-top: 5px;">
-                        <input type="file" id="upload-mask" accept=".svg" style="font-size: 11px; width: 100%;">
-                        <button id="clear-mask" style="margin-top: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;">
-                            清除遮罩
-                        </button>
-                    </div>
                 </div>
                 <div class="control-group">
                     <label style="color: #607D8B; font-weight: bold;">
@@ -209,14 +203,20 @@
                 </div>
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-layer-3-algorithm">
-                        <span style="color: #00FF00; font-weight: bold;">3️⃣ 算法扇环层</span>
+                        <input type="checkbox" id="show-layer-2-mask">
+                        <span style="color: #888888; font-weight: bold;">2️⃣ 功能性遮罩层（留白）</span>
                     </label>
+                    <div style="margin-left: 24px; margin-top: 5px;">
+                        <input type="file" id="upload-mask" accept=".svg" style="font-size: 11px; width: 100%;">
+                        <button id="clear-mask" style="margin-top: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;">
+                            清除遮罩
+                        </button>
+                    </div>
                 </div>
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-layer-4-decoration">
-                        <span style="color: #FFFFFF; font-weight: bold; text-shadow: 0 0 2px #000;">4️⃣ 修饰网格层</span>
+                        <input type="checkbox" id="show-layer-1-original" checked>
+                        <span style="color: #FF0000; font-weight: bold;">1️⃣ 原始 QR 层（最底层）</span>
                     </label>
                 </div>
             </div>
@@ -1669,18 +1669,20 @@
             maskLayer.innerHTML = '';
             if (!maskData) return;
 
-            // Render circles (white fill to mask/hide data)
+            // Render circles (white fill to mask/hide data, with visible border for debugging)
             maskData.circles?.forEach(({ cx, cy, r }) => {
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', cx);
                 circle.setAttribute('cy', cy);
                 circle.setAttribute('r', r);
                 circle.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
+                circle.setAttribute('stroke', '#888888'); // Gray border to see mask boundary
+                circle.setAttribute('stroke-width', '0.05'); // Thin border
                 circle.setAttribute('opacity', '1');
                 maskLayer.appendChild(circle);
             });
 
-            // Render rectangles (white fill to mask/hide data)
+            // Render rectangles (white fill to mask/hide data, with visible border for debugging)
             maskData.rects?.forEach(({ x, y, w, h }) => {
                 const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttribute('x', x);
@@ -1688,6 +1690,8 @@
                 rect.setAttribute('width', w);
                 rect.setAttribute('height', h);
                 rect.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
+                rect.setAttribute('stroke', '#888888'); // Gray border to see mask boundary
+                rect.setAttribute('stroke-width', '0.05'); // Thin border
                 rect.setAttribute('opacity', '1');
                 maskLayer.appendChild(rect);
             });
