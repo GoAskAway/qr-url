@@ -675,6 +675,55 @@
             return overlaps;
         }
 
+        // Helper: Check if a module is in finder pattern 7x7 region
+        function isInFinderPatternRegion(row, col) {
+            // Top-left (0-6, 0-6)
+            if (row >= 0 && row <= 6 && col >= 0 && col <= 6) return true;
+            // Top-right (0-6, 22-28)
+            if (row >= 0 && row <= 6 && col >= 22 && col <= 28) return true;
+            // Bottom-left (22-28, 0-6)
+            if (row >= 22 && row <= 28 && col >= 0 && col <= 6) return true;
+            return false;
+        }
+
+        // Helper: Check if a module is in alignment pattern inner 3x3 region
+        // Alignment pattern is at (22, 22), 5x5 total, inner 3x3 is (21-23, 21-23)
+        function isInAlignmentPatternInner(row, col) {
+            return row >= 21 && row <= 23 && col >= 21 && col <= 23;
+        }
+
+        // Helper: Check if a module is covered by mask layer
+        function isModuleMaskedByLayer(row, col) {
+            if (!maskData) return false;
+
+            const moduleX = col + 0.5; // Center of module
+            const moduleY = row + 0.5;
+
+            // Check circles
+            if (maskData.circles) {
+                for (const circle of maskData.circles) {
+                    const dx = moduleX - circle.cx;
+                    const dy = moduleY - circle.cy;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    if (distance < circle.r) {
+                        return true; // Module is masked by this circle
+                    }
+                }
+            }
+
+            // Check rectangles
+            if (maskData.rects) {
+                for (const rect of maskData.rects) {
+                    if (moduleX >= rect.x && moduleX < rect.x + rect.w &&
+                        moduleY >= rect.y && moduleY < rect.y + rect.h) {
+                        return true; // Module is masked by this rectangle
+                    }
+                }
+            }
+
+            return false;
+        }
+
         // SIMPLIFIED ALGORITHM: Calculate sector color based on maximum overlap area
         function calculateSectorColor_Simplified(radialIndex, ringIndex, debug = false) {
             // Find all grid cells that overlap with this sector
@@ -688,10 +737,40 @@
             const gridColors = new Set();
             const colorAreas = { black: 0, white: 0 };
             const gridDetails = [];
+            let skippedCount = 0;
 
             for (const overlap of overlappingGrids) {
                 const { gridRow, gridCol, overlapArea } = overlap;
-                const isBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+
+                // Skip finder pattern 7x7 regions
+                if (isInFinderPatternRegion(gridRow, gridCol)) {
+                    skippedCount++;
+                    if (debug) {
+                        gridDetails.push({
+                            grid: `${gridRow},${gridCol}`,
+                            color: 'SKIPPED (Finder)',
+                            area: overlapArea.toFixed(4)
+                        });
+                    }
+                    continue;
+                }
+
+                // Skip alignment pattern inner 3x3 region
+                if (isInAlignmentPatternInner(gridRow, gridCol)) {
+                    skippedCount++;
+                    if (debug) {
+                        gridDetails.push({
+                            grid: `${gridRow},${gridCol}`,
+                            color: 'SKIPPED (Alignment Inner)',
+                            area: overlapArea.toFixed(4)
+                        });
+                    }
+                    continue;
+                }
+
+                // Check if module is masked (treat as white if masked)
+                const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
+                const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
 
                 gridColors.add(isBlack);
 
@@ -704,10 +783,18 @@
                 if (debug) {
                     gridDetails.push({
                         grid: `${gridRow},${gridCol}`,
-                        color: isBlack ? 'black' : 'white',
+                        color: isMasked ? 'white (masked)' : (isBlack ? 'black' : 'white'),
                         area: overlapArea.toFixed(4)
                     });
                 }
+            }
+
+            // If all grids were skipped, return white
+            if (skippedCount === overlappingGrids.length) {
+                if (debug) {
+                    console.log(`[Sector ${radialIndex},${ringIndex}] All grids skipped (finder/alignment)`);
+                }
+                return false;
             }
 
             // Case 1 & 2: All grids have the same color
@@ -718,6 +805,7 @@
             if (debug) {
                 console.log(`[Sector ${radialIndex},${ringIndex}]`, {
                     overlappingGrids: gridDetails,
+                    skippedGrids: skippedCount,
                     colorAreas: {
                         black: colorAreas.black.toFixed(4),
                         white: colorAreas.white.toFixed(4)
