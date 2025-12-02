@@ -1810,6 +1810,115 @@
             }, 10);
         });
 
+        // QR Recognition Test
+        document.getElementById('test-qr').addEventListener('click', async () => {
+            const button = document.getElementById('test-qr');
+            const statusLight = document.getElementById('qr-status-light');
+            const statusText = document.getElementById('qr-status-text');
+            const resultDiv = document.getElementById('qr-result');
+
+            button.disabled = true;
+            button.textContent = '识别中... (Testing...)';
+            statusLight.style.background = '#FFA500'; // Orange
+            statusText.textContent = '识别中...';
+            resultDiv.style.display = 'none';
+
+            try {
+                // Get the SVG element
+                const svgElement = svg;
+                const svgRect = svgElement.getBoundingClientRect();
+
+                // Create a canvas to render the SVG
+                const canvas = document.createElement('canvas');
+                const scale = 2; // Higher resolution for better recognition
+                canvas.width = svgRect.width * scale;
+                canvas.height = svgRect.height * scale;
+                const ctx = canvas.getContext('2d');
+
+                // Convert SVG to image
+                const svgData = new XMLSerializer().serializeToString(svgElement);
+                const img = new Image();
+                const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                img.onload = () => {
+                    // Draw image on canvas
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    URL.revokeObjectURL(url);
+
+                    // Get image data for jsQR
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                    // Try to decode QR code
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                        inversionAttempts: "dontInvert"
+                    });
+
+                    if (code) {
+                        // Success
+                        statusLight.style.background = '#4CAF50'; // Green
+                        statusLight.style.boxShadow = '0 0 10px #4CAF50';
+                        statusText.textContent = '识别成功！';
+                        statusText.style.color = '#4CAF50';
+
+                        resultDiv.innerHTML = `
+                            <strong>识别结果：</strong><br>
+                            <div style="background: #e8f5e9; padding: 8px; border-radius: 4px; margin-top: 5px; word-break: break-all;">
+                                ${code.data}
+                            </div>
+                        `;
+                        resultDiv.style.display = 'block';
+
+                        console.log('[QR Test] Success:', code.data);
+                    } else {
+                        // Failed
+                        statusLight.style.background = '#f44336'; // Red
+                        statusLight.style.boxShadow = '0 0 10px #f44336';
+                        statusText.textContent = '识别失败';
+                        statusText.style.color = '#f44336';
+
+                        resultDiv.innerHTML = `
+                            <strong>识别失败</strong><br>
+                            <span style="color: #666; font-size: 11px;">
+                                可能原因：<br>
+                                • QR 码变形过度<br>
+                                • 图层遮挡（检查图层控制）<br>
+                                • 需要调整遮罩或算法
+                            </span>
+                        `;
+                        resultDiv.style.display = 'block';
+
+                        console.log('[QR Test] Failed to recognize QR code');
+                    }
+
+                    button.disabled = false;
+                    button.textContent = '测试识别 (Test QR)';
+                };
+
+                img.onerror = () => {
+                    statusLight.style.background = '#f44336'; // Red
+                    statusText.textContent = '加载失败';
+                    statusText.style.color = '#f44336';
+                    button.disabled = false;
+                    button.textContent = '测试识别 (Test QR)';
+                    alert('图像加载失败');
+                };
+
+                img.src = url;
+
+            } catch (error) {
+                console.error('[QR Test] Error:', error);
+                statusLight.style.background = '#f44336'; // Red
+                statusText.textContent = '测试失败';
+                statusText.style.color = '#f44336';
+                button.disabled = false;
+                button.textContent = '测试识别 (Test QR)';
+                alert('测试失败：' + error.message);
+            }
+        });
+
         // Algorithm controls
         document.getElementById('run-algorithm').addEventListener('click', async () => {
             const button = document.getElementById('run-algorithm');
