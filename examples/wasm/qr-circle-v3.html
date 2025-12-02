@@ -250,22 +250,33 @@
     <script>
         // QR Code v3 parameters
         const moduleCount = 29;
-        const cellSize = 30; // SVG单位 (optimized for screen fit)
-        const svgSize = moduleCount * cellSize;
         const center = { x: moduleCount / 2, y: moduleCount / 2 }; // (14.5, 14.5)
 
-        // Create SVG (with 10% margin)
+        // Calculate outer circle radius (diagonal distance from center)
+        const outerRadius = Math.sqrt(2) * moduleCount / 2; // ≈ 20.506
+
+        // Set margin to fit the outer circle perfectly
+        // margin = outerRadius - moduleCount/2
+        const margin = outerRadius - moduleCount / 2; // ≈ 6.006
+
+        // Calculate viewBox dimensions (should match outer circle diameter)
+        const viewBoxSize = moduleCount + 2 * margin; // ≈ 41.01
+
+        // Calculate cellSize to fit screen (assuming ~900px available space)
+        const cellSize = 21; // SVG单位 (optimized for outer circle fit)
+        const svgSize = viewBoxSize * cellSize; // ≈ 861px
+
+        // Create SVG
         const svgContainer = document.getElementById('svg-container');
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('width', svgSize);
         svg.setAttribute('height', svgSize);
-        // Add 10% margin: viewBox expanded from 29 to ~31.9, centered
-        const margin = moduleCount * 0.1;
+        // ViewBox fits the outer circle exactly
         const initialViewBox = {
             x: -margin,
             y: -margin,
-            width: moduleCount + 2 * margin,
-            height: moduleCount + 2 * margin
+            width: viewBoxSize,
+            height: viewBoxSize
         };
         svg.setAttribute('viewBox', `${initialViewBox.x} ${initialViewBox.y} ${initialViewBox.width} ${initialViewBox.height}`);
         svgContainer.appendChild(svg);
