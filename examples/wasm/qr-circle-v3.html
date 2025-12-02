@@ -725,6 +725,14 @@
             return false;
         }
 
+        // Helper: Check if a module is an edge module (close to QR boundary)
+        // Edge modules are within 2 units from any boundary
+        function isEdgeModule(row, col) {
+            const edgeThreshold = 2;
+            return row < edgeThreshold || row >= moduleCount - edgeThreshold ||
+                   col < edgeThreshold || col >= moduleCount - edgeThreshold;
+        }
+
         // Helper: Check if a sector is an edge sector (partially inside and partially outside QR boundary)
         function isEdgeSector(radialIndex, ringIndex) {
             const angle1 = radialIndex * 3 * Math.PI / 180;
@@ -780,6 +788,7 @@
             const gridDetails = [];
             let skippedCount = 0;
             let hasBlackModule = false;
+            let hasInnerModule = false; // Track if sector touches inner (non-edge) modules
 
             for (const overlap of overlappingGrids) {
                 const { gridRow, gridCol, overlapArea } = overlap;
@@ -808,6 +817,11 @@
                         });
                     }
                     continue;
+                }
+
+                // Check if this module is an inner (non-edge) module
+                if (!isEdgeModule(gridRow, gridCol)) {
+                    hasInnerModule = true;
                 }
 
                 // Check if module is masked (treat as white if masked)
@@ -841,11 +855,12 @@
             }
 
             // SPECIAL CASE: Edge sectors (partially outside QR boundary) - always add material
-            // If it's an edge sector and has any black module, return black (additive approach)
+            // CONDITION: Only apply if sector ONLY touches edge modules (not inner modules)
+            // If it's an edge sector, has black module, and doesn't touch inner modules, return black
             const isEdge = isEdgeSector(radialIndex, ringIndex);
-            if (isEdge && hasBlackModule) {
+            if (isEdge && hasBlackModule && !hasInnerModule) {
                 if (debug) {
-                    console.log(`[Sector ${radialIndex},${ringIndex}] EDGE SECTOR - Additive approach: BLACK (extends beyond boundary)`);
+                    console.log(`[Sector ${radialIndex},${ringIndex}] EDGE SECTOR (edge-only) - Additive approach: BLACK (extends beyond boundary)`);
                 }
                 return true;
             }
