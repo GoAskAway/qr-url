@@ -223,7 +223,12 @@
                     </button>
                 </div>
                 <div class="control-group">
-                    <label><input type="checkbox" id="show-algorithm"> 显示算法结果（蓝/青色）</label>
+                    <label><input type="checkbox" id="show-algorithm"> 显示算法结果（红色）</label>
+                </div>
+                <div class="control-group">
+                    <button id="debug-sector" style="width: 100%; padding: 8px; cursor: pointer; background: #607D8B; color: white; border: none; border-radius: 4px; font-size: 12px;">
+                        调试扇环 (Debug Sector)
+                    </button>
                 </div>
                 <div id="algorithm-stats" style="margin-top: 10px; padding: 10px; background: #f3e5f5; border-radius: 4px; font-size: 12px; display: none;"></div>
             </div>
@@ -718,7 +723,7 @@
         }
 
         // SIMPLIFIED ALGORITHM: Calculate sector color based on maximum overlap area
-        function calculateSectorColor_Simplified(radialIndex, ringIndex) {
+        function calculateSectorColor_Simplified(radialIndex, ringIndex, debug = false) {
             // Find all grid cells that overlap with this sector
             const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
 
@@ -729,6 +734,7 @@
             // Collect colors and areas
             const gridColors = new Set();
             const colorAreas = { black: 0, white: 0 };
+            const gridDetails = [];
 
             for (const overlap of overlappingGrids) {
                 const { gridRow, gridCol, overlapArea } = overlap;
@@ -741,15 +747,34 @@
                 } else {
                     colorAreas.white += overlapArea;
                 }
+
+                if (debug) {
+                    gridDetails.push({
+                        grid: `${gridRow},${gridCol}`,
+                        color: isBlack ? 'black' : 'white',
+                        area: overlapArea.toFixed(4)
+                    });
+                }
             }
 
-            // Case 1 & 2: All grids have the same color (fully inside one grid or spanning same-color grids)
-            if (gridColors.size === 1) {
-                return Array.from(gridColors)[0];
+            // Case 1 & 2: All grids have the same color
+            const result = gridColors.size === 1
+                ? Array.from(gridColors)[0]
+                : colorAreas.black > colorAreas.white;
+
+            if (debug) {
+                console.log(`[Sector ${radialIndex},${ringIndex}]`, {
+                    overlappingGrids: gridDetails,
+                    colorAreas: {
+                        black: colorAreas.black.toFixed(4),
+                        white: colorAreas.white.toFixed(4)
+                    },
+                    sameColor: gridColors.size === 1,
+                    result: result ? 'BLACK' : 'WHITE'
+                });
             }
 
-            // Case 3: Spanning different colors -> choose the color with larger area
-            return colorAreas.black > colorAreas.white;
+            return result;
         }
 
         // Check if a grid cell violates the 25% constraint
@@ -934,19 +959,17 @@
             let drawnCount = 0;
 
             for (const [cellId, state] of Object.entries(algorithmState)) {
-                // Parse cell ID: cellId format might be "grid:*,*|radial:idx|ring:idx"
-                const match = cellId.match(/radial:(\d+)\|ring:(\d+)/);
+                // Only draw black regions (skip white)
+                if (!state) continue;
+
+                // Parse cell ID: "grid:row,col|radial:idx|ring:idx"
+                const match = cellId.match(/grid:(-?\d+),(-?\d+)\|radial:(\d+)\|ring:(\d+)/);
                 if (!match) continue;
 
-                const radialIndex = parseInt(match[1]);
-                const ringIndex = parseInt(match[2]);
-
-                // Find a grid cell that overlaps with this sector for positioning
-                const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
-                if (overlappingGrids.length === 0) continue;
-
-                const gridRow = overlappingGrids[0].gridRow;
-                const gridCol = overlappingGrids[0].gridCol;
+                const gridRow = parseInt(match[1]);
+                const gridCol = parseInt(match[2]);
+                const radialIndex = parseInt(match[3]);
+                const ringIndex = parseInt(match[4]);
 
                 // Create cell with clipPath
                 const result = createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId);
@@ -955,9 +978,8 @@
                 // Add clipPath to global defs
                 globalDefs.appendChild(result.clipPath);
 
-                // Use different colors for algorithm result (blue for black, cyan for white)
-                const fillColor = state ? '#2196F3' : '#00BCD4'; // Blue / Cyan
-                result.path.setAttribute('fill', fillColor);
+                // Use RED for algorithm black regions
+                result.path.setAttribute('fill', '#FF0000'); // Red
                 result.path.setAttribute('stroke', 'none');
                 result.path.setAttribute('shape-rendering', 'crispEdges');
 
@@ -965,7 +987,7 @@
                 drawnCount++;
             }
 
-            console.log('[drawAlgorithmResult] Drew', drawnCount, 'algorithm cells');
+            console.log('[drawAlgorithmResult] Drew', drawnCount, 'algorithm black cells');
         }
 
         // Check if position is in Finder Pattern
@@ -1373,9 +1395,9 @@
                 statsHTML += `
                     <br>
                     <strong>颜色说明：</strong><br>
-                    • 🔵 蓝色：算法黑色区域<br>
-                    • 🩵 青色：算法白色区域<br>
-                    • ⚫ 黑色/白色：人工标记/原始
+                    • 🔴 红色：算法黑色区域<br>
+                    • ⚫ 黑色：人工标记/原始黑色<br>
+                    • ⚪ 白色：留空（不显示）
                 `;
 
                 statsDiv.innerHTML = statsHTML;
@@ -1397,6 +1419,47 @@
 
         document.getElementById('show-algorithm').addEventListener('change', (e) => {
             algorithmLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        // Debug sector button
+        document.getElementById('debug-sector').addEventListener('click', () => {
+            const radial = parseInt(prompt('输入 radial index (0-119):', '30'));
+            const ring = parseInt(prompt('输入 ring index (0-30):', '5'));
+
+            if (isNaN(radial) || isNaN(ring)) {
+                alert('无效的输入');
+                return;
+            }
+
+            console.log('========================================');
+            console.log(`🔍 调试扇环: radial=${radial}, ring=${ring}`);
+            console.log('========================================');
+
+            // Call with debug flag
+            const color = calculateSectorColor_Simplified(radial, ring, true);
+
+            // Find manual edits for this sector
+            const manualEdits = [];
+            for (const [cellId, state] of Object.entries(cellState)) {
+                if (cellId.includes(`radial:${radial}|ring:${ring}`)) {
+                    manualEdits.push({ cellId, state });
+                }
+            }
+
+            console.log('📝 人工标记:', manualEdits.length > 0 ? manualEdits : '无');
+
+            // Check algorithm result
+            const algoEdits = [];
+            for (const [cellId, state] of Object.entries(algorithmState)) {
+                if (cellId.includes(`radial:${radial}|ring:${ring}`)) {
+                    algoEdits.push({ cellId, state });
+                }
+            }
+
+            console.log('🤖 算法结果:', algoEdits.length > 0 ? algoEdits : '无');
+            console.log('========================================');
+
+            alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n人工标记: ${manualEdits.length} 个\n算法结果: ${algoEdits.length} 个`);
         });
 
         // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
