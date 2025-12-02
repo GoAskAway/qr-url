@@ -1167,6 +1167,7 @@
 
             let drawnCount = 0;
 
+            // 1. Draw algorithm sectors
             for (const [sectorId, color] of Object.entries(sectorColors)) {
                 if (!color) continue; // Only draw black regions
 
@@ -1189,6 +1190,23 @@
             }
 
             console.log('[drawAlgorithmDisplay] Drew', drawnCount, 'algorithm sectors');
+
+            // 2. Draw skipped regions (copy from original QR layer but in green)
+
+            // Draw circular finder patterns (green color for algorithm layer)
+            const finderCenters = [
+                { x: 3.5, y: 3.5 },      // Top-left
+                { x: 25.5, y: 3.5 },     // Top-right
+                { x: 3.5, y: 25.5 }      // Bottom-left
+            ];
+            finderCenters.forEach(center => {
+                drawCircularFinderPatternOnLayer(algorithmDisplayLayer, center.x, center.y, '#00FF00');
+            });
+
+            // Draw circular alignment pattern inner 3x3 (green color for algorithm layer)
+            drawCircularAlignmentPatternOnLayer(algorithmDisplayLayer, 22.5, 22.5, '#00FF00');
+
+            console.log('[drawAlgorithmDisplay] Added skipped regions (finder patterns + alignment pattern) in green');
         }
 
         // === Coverage detection functions (OPTIMIZED) ===
