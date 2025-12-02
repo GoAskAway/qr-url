@@ -184,6 +184,12 @@
                         <input type="checkbox" id="show-layer-3-algorithm">
                         <span style="color: #00FF00; font-weight: bold;">3️⃣ 算法扇环层</span>
                     </label>
+                    <div style="margin-left: 24px; margin-top: 5px;">
+                        <label>
+                            <input type="checkbox" id="toggle-edge-extension">
+                            <span style="color: #88FF88;">应用边缘延伸</span>
+                        </label>
+                    </div>
                 </div>
                 <div class="control-group">
                     <label>
@@ -340,7 +346,9 @@
 
         // Algorithm state (automatic conversion result)
         // Store sector colors directly, without grid subdivision
-        let sectorColors = {}; // { "radial:idx|ring:idx": true/false } - sector-based colors
+        let sectorColors = {}; // { "radial:idx|ring:idx": true/false } - sector-based colors (main algorithm)
+        let sectorColorsWithEdge = {}; // { "radial:idx|ring:idx": true/false } - with edge extension applied
+        let edgeExtensionEnabled = false; // Whether to apply edge extension
         let algorithmState = {}; // Legacy: for comparison with manual edits
         let algorithmStats = null; // Algorithm execution statistics
 
@@ -791,8 +799,6 @@
             const colorAreas = { black: 0, white: 0 };
             const gridDetails = [];
             let skippedCount = 0;
-            let hasBlackModule = false;
-            let hasInnerModule = false; // Track if sector touches inner (non-edge) modules
 
             for (const overlap of overlappingGrids) {
                 const { gridRow, gridCol, overlapArea } = overlap;
@@ -823,12 +829,6 @@
                     continue;
                 }
 
-                // Check if this module is an inner (non-edge) module
-                const isEdge = isEdgeModule(gridRow, gridCol);
-                if (!isEdge) {
-                    hasInnerModule = true;
-                }
-
                 // Check if module is masked (treat as white if masked)
                 const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
                 const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
@@ -837,7 +837,6 @@
 
                 if (isBlack) {
                     colorAreas.black += overlapArea;
-                    hasBlackModule = true;
                 } else {
                     colorAreas.white += overlapArea;
                 }
@@ -846,8 +845,7 @@
                     gridDetails.push({
                         grid: `${gridRow},${gridCol}`,
                         color: isMasked ? 'white (masked)' : (isBlack ? 'black' : 'white'),
-                        area: overlapArea.toFixed(4),
-                        isEdgeModule: isEdge
+                        area: overlapArea.toFixed(4)
                     });
                 }
             }
@@ -860,36 +858,13 @@
                 return false;
             }
 
-            // SPECIAL CASE: Edge sectors (partially outside QR rectangular boundary) - additive approach
-            // CONDITION: Only apply if sector ONLY touches edge modules (not inner modules)
-            // Rule: If crossing boundary + has black + no inner modules → always BLACK (extends beyond boundary)
-            const isEdge = isEdgeSector(radialIndex, ringIndex);
-            const applyEdgeRule = isEdge && hasBlackModule && !hasInnerModule;
-
-            if (debug) {
-                console.log(`[Sector ${radialIndex},${ringIndex}] Edge Rule Check:`, {
-                    isEdgeSector: isEdge,
-                    hasBlackModule: hasBlackModule,
-                    hasInnerModule: hasInnerModule,
-                    applyEdgeRule: applyEdgeRule
-                });
-            }
-
-            if (applyEdgeRule) {
-                if (debug) {
-                    console.log(`[Sector ${radialIndex},${ringIndex}] ✅ EDGE RULE APPLIED - Additive: BLACK (extends beyond boundary)`);
-                }
-                return true;
-            }
-
             // Standard case: All grids have the same color, or majority color
             const result = gridColors.size === 1
                 ? Array.from(gridColors)[0]
                 : colorAreas.black > colorAreas.white;
 
             if (debug) {
-                console.log(`[Sector ${radialIndex},${ringIndex}] Standard Rule:`, {
-                    isEdgeSector: isEdge,
+                console.log(`[Sector ${radialIndex},${ringIndex}] Algorithm Result:`, {
                     overlappingGrids: gridDetails,
                     skippedGrids: skippedCount,
                     colorAreas: {
@@ -902,6 +877,72 @@
             }
 
             return result;
+        }
+
+        // Apply edge extension: For edge sectors, apply additive approach
+        // Returns a new sectorColors object with edge extension applied
+        function applyEdgeExtension() {
+            console.log('[Edge Extension] Starting...');
+            const startTime = performance.now();
+
+            // Start with a copy of the main algorithm results
+            const extendedColors = { ...sectorColors };
+            let edgeModifications = 0;
+
+            // Process all sectors
+            for (const [sectorId, color] of Object.entries(sectorColors)) {
+                // Parse sector ID
+                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
+
+                // Check if this is an edge sector
+                if (!isEdgeSector(radialIndex, ringIndex)) continue;
+
+                // Get overlapping grids to check conditions
+                const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
+                let hasBlackModule = false;
+                let hasInnerModule = false;
+
+                for (const overlap of overlappingGrids) {
+                    const { gridRow, gridCol } = overlap;
+
+                    // Skip special regions
+                    if (isInFinderPatternRegion(gridRow, gridCol)) continue;
+                    if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
+
+                    // Check if inner module
+                    if (!isEdgeModule(gridRow, gridCol)) {
+                        hasInnerModule = true;
+                    }
+
+                    // Check if black
+                    const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
+                    const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
+                    if (isBlack) {
+                        hasBlackModule = true;
+                    }
+                }
+
+                // Apply edge rule: if edge sector + has black + no inner modules → force BLACK
+                if (hasBlackModule && !hasInnerModule) {
+                    if (!color) { // If was white, change to black
+                        extendedColors[sectorId] = true;
+                        edgeModifications++;
+                        console.log(`[Edge Extension] Modified sector ${sectorId}: WHITE → BLACK`);
+                    }
+                }
+            }
+
+            const endTime = performance.now();
+            const elapsed = ((endTime - startTime) / 1000).toFixed(2);
+
+            console.log(`[Edge Extension] ✅ Completed in ${elapsed}s`);
+            console.log(`[Edge Extension] Modified ${edgeModifications} sectors`);
+
+            return extendedColors;
         }
 
         // Check if a grid cell violates the 25% constraint
@@ -997,6 +1038,10 @@
             console.log('[Algorithm] ✅ Completed!', algorithmStats);
             console.log(`[Algorithm] Pure sectors: ${Object.keys(sectorColors).length}`);
             console.log(`[Algorithm] Grid-mapped cells: ${Object.keys(algorithmState).length}`);
+
+            // Automatically run edge extension
+            sectorColorsWithEdge = applyEdgeExtension();
+
             return algorithmStats;
         }
 
@@ -1251,10 +1296,16 @@
                 return;
             }
 
+            // Choose data source based on edge extension toggle
+            const dataSource = edgeExtensionEnabled ? sectorColorsWithEdge : sectorColors;
+            const sourceLabel = edgeExtensionEnabled ? '(with edge extension)' : '(main algorithm)';
+
+            console.log(`[drawAlgorithmDisplay] Drawing from: ${sourceLabel}`);
+
             let drawnCount = 0;
 
             // 1. Draw algorithm sectors
-            for (const [sectorId, color] of Object.entries(sectorColors)) {
+            for (const [sectorId, color] of Object.entries(dataSource)) {
                 if (!color) continue; // Only draw black regions
 
                 // Parse sector ID: "radial:idx|ring:idx"
@@ -1965,6 +2016,17 @@
 
         document.getElementById('show-layer-4-decoration').addEventListener('change', (e) => {
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        // Edge extension toggle
+        document.getElementById('toggle-edge-extension').addEventListener('change', (e) => {
+            edgeExtensionEnabled = e.target.checked;
+            console.log(`[Edge Extension] Toggle: ${edgeExtensionEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+            // Redraw if algorithm has been run
+            if (Object.keys(sectorColors).length > 0) {
+                drawAlgorithmDisplay();
+            }
         });
 
         // Coverage detection controls
