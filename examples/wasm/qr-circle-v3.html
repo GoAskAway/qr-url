@@ -291,9 +291,10 @@
         function generateQRPattern() {
             // Create QR code with type 3 (29x29), error correction level H (30%)
             const qr = qrcode(3, 'H');
-            // Convert to uppercase for ALPHANUMERIC mode
+            // Explicitly specify ALPHANUMERIC mode
             // ALPHANUMERIC only supports: 0-9, A-Z, space, $ % * + - . / :
-            qr.addData('HTTPS://LETS.GO/LXPB$2PI-W6JBZS$BL6');
+            // 35 chars × 5.5 bits = 193 bits, fits in v3+H (208 bits data capacity)
+            qr.addData('HTTPS://LETS.GO/LXPB$2PI-W6JBZS$BL6', 'Alphanumeric');
             qr.make();
 
             const count = qr.getModuleCount();
