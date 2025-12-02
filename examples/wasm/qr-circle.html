@@ -301,7 +301,9 @@
         let cellState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - fine-grained cells (manual edits)
 
         // Algorithm state (automatic conversion result)
-        let algorithmState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - algorithm calculated cells
+        // Store sector colors directly, without grid subdivision
+        let sectorColors = {}; // { "radial:idx|ring:idx": true/false } - sector-based colors
+        let algorithmState = {}; // Legacy: for comparison with manual edits
         let algorithmStats = null; // Algorithm execution statistics
 
         // Undo/Redo history stacks
@@ -603,6 +605,36 @@
 
         // ========== ALGORITHM: Automatic Sector-Ring Conversion ==========
 
+        // Create a complete sector (annular segment) path - NO grid clipping
+        function createCompleteSectorPath(radialIndex, ringIndex) {
+            const angle1 = radialIndex * 3 * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * 3 * Math.PI / 180;
+            const r1 = ringIndex * RING_INTERVAL;
+            const r2 = (ringIndex + 1) * RING_INTERVAL;
+
+            // Calculate four vertices
+            const x1_inner = center.x + r1 * Math.cos(angle1);
+            const y1_inner = center.y + r1 * Math.sin(angle1);
+            const x2_inner = center.x + r1 * Math.cos(angle2);
+            const y2_inner = center.y + r1 * Math.sin(angle2);
+            const x1_outer = center.x + r2 * Math.cos(angle1);
+            const y1_outer = center.y + r2 * Math.sin(angle1);
+            const x2_outer = center.x + r2 * Math.cos(angle2);
+            const y2_outer = center.y + r2 * Math.sin(angle2);
+
+            // Determine if arc is large (> 180 degrees)
+            const largeArc = (angle2 - angle1) > Math.PI ? 1 : 0;
+
+            // Build annular sector path
+            let pathData = `M ${x1_inner} ${y1_inner}`;  // Start at inner arc, angle1
+            pathData += ` A ${r1} ${r1} 0 ${largeArc} 1 ${x2_inner} ${y2_inner}`;  // Inner arc to angle2
+            pathData += ` L ${x2_outer} ${y2_outer}`;  // Line to outer arc
+            pathData += ` A ${r2} ${r2} 0 ${largeArc} 0 ${x1_outer} ${y1_outer}`;  // Outer arc back to angle1
+            pathData += ` Z`;  // Close path
+
+            return pathData;
+        }
+
         // Check if a point is inside an annular sector (ring segment)
         function isPointInSector(px, py, radialIndex, ringIndex) {
             const dx = px - center.x;
@@ -809,45 +841,51 @@
             };
         }
 
-        // SIMPLIFIED ALGORITHM: Direct conversion based on area overlap
-        // Generate fine-grained cells for each (grid, radial, ring) combination
+        // SIMPLIFIED ALGORITHM: Pure sector-based conversion using Monte Carlo
         async function runConversionAlgorithm() {
-            console.log('[Algorithm] 🚀 Starting SIMPLIFIED conversion algorithm...');
+            console.log('[Algorithm] 🚀 Starting PURE SECTOR-BASED conversion...');
             const startTime = performance.now();
 
-            algorithmState = {};
-            let processedCells = 0;
+            sectorColors = {};
+            algorithmState = {}; // Also populate for comparison
             let sameColorCount = 0;
             let differentColorCount = 0;
 
-            // Iterate through all grid cells (including margins)
-            console.log('[Algorithm] Phase: Generating fine-grained cells...');
-            for (let row = -2; row < moduleCount + 2; row++) {
-                for (let col = -2; col < moduleCount + 2; col++) {
-                    // Find all sectors overlapping this grid cell
-                    const overlappingSectors = findOverlappingSectors(row, col);
+            const maxRadius = Math.sqrt(2) * moduleCount / 2;
+            const maxRing = Math.ceil(maxRadius / RING_INTERVAL);
+            const totalSectors = 120 * maxRing;
 
-                    for (const sector of overlappingSectors) {
-                        const { radialIndex, ringIndex, cellId } = sector;
+            console.log('[Algorithm] Processing sectors (radial × ring)...');
+            let processed = 0;
 
-                        // Calculate color for this sector (same for all grids it spans)
-                        const color = calculateSectorColor_Simplified(radialIndex, ringIndex);
+            // Iterate through all sectors (radial, ring) - NO grid subdivision
+            for (let ring = 0; ring <= maxRing; ring++) {
+                for (let radial = 0; radial < 120; radial++) {
+                    // Calculate color for this complete sector
+                    const color = calculateSectorColor_Simplified(radial, ring);
+                    const sectorId = `radial:${radial}|ring:${ring}`;
+                    sectorColors[sectorId] = color;
+
+                    // Also populate algorithmState for comparison with manual edits
+                    // (manual edits are grid-subdivided, so we need to map sectors to grids)
+                    const overlappingGrids = findOverlappingGridCells(radial, ring);
+                    for (const overlap of overlappingGrids) {
+                        const cellId = `grid:${overlap.gridRow},${overlap.gridCol}|radial:${radial}|ring:${ring}`;
                         algorithmState[cellId] = color;
-                        processedCells++;
-
-                        // Track statistics
-                        const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
-                        const colors = new Set(overlappingGrids.map(g => baseModuleState[`${g.gridRow},${g.gridCol}`] || false));
-                        if (colors.size === 1) {
-                            sameColorCount++;
-                        } else {
-                            differentColorCount++;
-                        }
                     }
-                }
 
-                if ((row + 2) % 5 === 0) {
-                    console.log(`[Algorithm] Processed row ${row}/${moduleCount + 2}`);
+                    // Track statistics
+                    const colors = new Set(overlappingGrids.map(g => baseModuleState[`${g.gridRow},${g.gridCol}`] || false));
+                    if (colors.size === 1) {
+                        sameColorCount++;
+                    } else {
+                        differentColorCount++;
+                    }
+
+                    processed++;
+                    if (processed % 200 === 0) {
+                        console.log(`[Algorithm] Processed ${processed}/${totalSectors} sectors`);
+                    }
                 }
             }
 
@@ -855,13 +893,15 @@
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
 
             algorithmStats = {
-                totalCells: Object.keys(algorithmState).length,
+                totalSectors: Object.keys(sectorColors).length,
                 sameColorSectors: sameColorCount,
                 mixedColorSectors: differentColorCount,
                 elapsedSeconds: elapsed
             };
 
             console.log('[Algorithm] ✅ Completed!', algorithmStats);
+            console.log(`[Algorithm] Pure sectors: ${Object.keys(sectorColors).length}`);
+            console.log(`[Algorithm] Grid-mapped cells: ${Object.keys(algorithmState).length}`);
             return algorithmStats;
         }
 
@@ -946,48 +986,41 @@
             }
         }
 
-        // Draw algorithm result
+        // Draw algorithm result - PURE SECTOR SHAPES (no grid clipping)
         function drawAlgorithmResult() {
             algorithmLayer.innerHTML = '';
 
-            if (Object.keys(algorithmState).length === 0) {
-                console.log('[drawAlgorithmResult] No algorithm state to draw');
+            if (Object.keys(sectorColors).length === 0) {
+                console.log('[drawAlgorithmResult] No sector colors to draw');
                 return;
             }
 
-            // Re-use global defs
             let drawnCount = 0;
 
-            for (const [cellId, state] of Object.entries(algorithmState)) {
+            // Draw complete sectors (annular segments) - NO grid subdivision
+            for (const [sectorId, color] of Object.entries(sectorColors)) {
                 // Only draw black regions (skip white)
-                if (!state) continue;
+                if (!color) continue;
 
-                // Parse cell ID: "grid:row,col|radial:idx|ring:idx"
-                const match = cellId.match(/grid:(-?\d+),(-?\d+)\|radial:(\d+)\|ring:(\d+)/);
+                // Parse sector ID: "radial:idx|ring:idx"
+                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
                 if (!match) continue;
 
-                const gridRow = parseInt(match[1]);
-                const gridCol = parseInt(match[2]);
-                const radialIndex = parseInt(match[3]);
-                const ringIndex = parseInt(match[4]);
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
 
-                // Create cell with clipPath
-                const result = createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId);
-                if (!result) continue;
+                // Create complete sector path (no clipping)
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', createCompleteSectorPath(radialIndex, ringIndex));
+                path.setAttribute('fill', '#FF0000'); // Red
+                path.setAttribute('stroke', 'none');
+                path.setAttribute('shape-rendering', 'geometricPrecision');
 
-                // Add clipPath to global defs
-                globalDefs.appendChild(result.clipPath);
-
-                // Use RED for algorithm black regions
-                result.path.setAttribute('fill', '#FF0000'); // Red
-                result.path.setAttribute('stroke', 'none');
-                result.path.setAttribute('shape-rendering', 'crispEdges');
-
-                algorithmLayer.appendChild(result.path);
+                algorithmLayer.appendChild(path);
                 drawnCount++;
             }
 
-            console.log('[drawAlgorithmResult] Drew', drawnCount, 'algorithm black cells');
+            console.log('[drawAlgorithmResult] Drew', drawnCount, 'complete sectors (pure annular segments)');
         }
 
         // Check if position is in Finder Pattern
@@ -1374,10 +1407,10 @@
 
                 // Show stats
                 let statsHTML = `
-                    <strong>算法统计：</strong><br>
-                    • 总细粒度单元：${stats.totalCells}<br>
-                    • 单色扇形：${stats.sameColorSectors}<br>
-                    • 混色扇形：${stats.mixedColorSectors}<br>
+                    <strong>算法统计（纯扇环）：</strong><br>
+                    • 总扇环数：${stats.totalSectors}<br>
+                    • 单色扇环：${stats.sameColorSectors}<br>
+                    • 混色扇环：${stats.mixedColorSectors}<br>
                     • 耗时：${stats.elapsedSeconds} 秒<br>
                 `;
 
