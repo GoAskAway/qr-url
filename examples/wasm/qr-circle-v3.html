@@ -903,7 +903,7 @@
                 // Get overlapping grids to check conditions
                 const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
                 let hasBlackModule = false;
-                let hasInnerModule = false;
+                let hasWhiteModule = false;
 
                 for (const overlap of overlappingGrids) {
                     const { gridRow, gridCol } = overlap;
@@ -912,25 +912,25 @@
                     if (isInFinderPatternRegion(gridRow, gridCol)) continue;
                     if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
 
-                    // Check if inner module
-                    if (!isEdgeModule(gridRow, gridCol)) {
-                        hasInnerModule = true;
-                    }
-
-                    // Check if black
+                    // Check module color (considering mask)
                     const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
                     const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
+
                     if (isBlack) {
                         hasBlackModule = true;
+                    } else {
+                        hasWhiteModule = true;
                     }
                 }
 
-                // Apply edge rule: if edge sector + has black + no inner modules → force BLACK
-                if (hasBlackModule && !hasInnerModule) {
+                // Apply edge rule: if edge sector + has black + NO white modules → force BLACK
+                // Only extend when sector only covers black modules (plus boundary-outside area)
+                // If it also covers white modules, don't extend (would pollute white areas)
+                if (hasBlackModule && !hasWhiteModule) {
                     if (!color) { // If was white, change to black
                         extendedColors[sectorId] = true;
                         edgeModifications++;
-                        console.log(`[Edge Extension] Modified sector ${sectorId}: WHITE → BLACK`);
+                        console.log(`[Edge Extension] Modified sector ${sectorId}: WHITE → BLACK (only covers black modules)`);
                     }
                 }
             }
