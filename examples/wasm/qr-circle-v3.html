@@ -947,48 +947,15 @@
             layer.appendChild(centerDot);
         }
 
-        // Helper: Draw circular alignment pattern on specified layer
+        // Helper: Draw circular alignment pattern on specified layer (solid circle)
         function drawCircularAlignmentPatternOnLayer(layer, centerX, centerY, color) {
-            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            const maskId = `alignment-mask-${centerX}-${centerY}-${color}`;
-            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
-            mask.setAttribute('id', maskId);
-
-            // Outer circle (white)
-            const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            outerCircle.setAttribute('cx', centerX);
-            outerCircle.setAttribute('cy', centerY);
-            outerCircle.setAttribute('r', 2.5);
-            outerCircle.setAttribute('fill', 'white');
-            mask.appendChild(outerCircle);
-
-            // Inner circle (black - creates white ring)
-            const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            innerCircle.setAttribute('cx', centerX);
-            innerCircle.setAttribute('cy', centerY);
-            innerCircle.setAttribute('r', 1.5);
-            innerCircle.setAttribute('fill', 'black');
-            mask.appendChild(innerCircle);
-
-            defs.appendChild(mask);
-            layer.appendChild(defs);
-
-            // Draw the outer ring
-            const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            outerRing.setAttribute('cx', centerX);
-            outerRing.setAttribute('cy', centerY);
-            outerRing.setAttribute('r', 2.5);
-            outerRing.setAttribute('fill', color);
-            outerRing.setAttribute('mask', `url(#${maskId})`);
-            layer.appendChild(outerRing);
-
-            // Draw the center dot
-            const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            centerDot.setAttribute('cx', centerX);
-            centerDot.setAttribute('cy', centerY);
-            centerDot.setAttribute('r', 1.5);
-            centerDot.setAttribute('fill', color);
-            layer.appendChild(centerDot);
+            // Draw a solid circle for alignment pattern
+            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', centerX);
+            circle.setAttribute('cy', centerY);
+            circle.setAttribute('r', 2.5);
+            circle.setAttribute('fill', color);
+            layer.appendChild(circle);
         }
 
         // Draw original QR code (rectangular coordinate system, red)
