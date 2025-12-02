@@ -887,6 +887,8 @@
             // Start with a copy of the main algorithm results
             const extendedColors = { ...sectorColors };
             let edgeModifications = 0;
+            let edgeSectorCount = 0;
+            let candidateCount = 0;
 
             // Process all sectors
             for (const [sectorId, color] of Object.entries(sectorColors)) {
@@ -899,6 +901,8 @@
 
                 // Check if this is an edge sector
                 if (!isEdgeSector(radialIndex, ringIndex)) continue;
+
+                edgeSectorCount++;
 
                 // Get overlapping grids to check conditions
                 const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
@@ -927,10 +931,13 @@
                 // Only extend when sector only covers black modules (plus boundary-outside area)
                 // If it also covers white modules, don't extend (would pollute white areas)
                 if (hasBlackModule && !hasWhiteModule) {
+                    candidateCount++;
                     if (!color) { // If was white, change to black
                         extendedColors[sectorId] = true;
                         edgeModifications++;
                         console.log(`[Edge Extension] Modified sector ${sectorId}: WHITE → BLACK (only covers black modules)`);
+                    } else {
+                        console.log(`[Edge Extension] Candidate ${sectorId}: Already BLACK, no change needed`);
                     }
                 }
             }
@@ -939,7 +946,10 @@
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
 
             console.log(`[Edge Extension] ✅ Completed in ${elapsed}s`);
-            console.log(`[Edge Extension] Modified ${edgeModifications} sectors`);
+            console.log(`[Edge Extension] Total sectors: ${Object.keys(sectorColors).length}`);
+            console.log(`[Edge Extension] Edge sectors (crossing boundary): ${edgeSectorCount}`);
+            console.log(`[Edge Extension] Candidates (black only, no white): ${candidateCount}`);
+            console.log(`[Edge Extension] Modified (WHITE→BLACK): ${edgeModifications}`);
 
             return extendedColors;
         }
