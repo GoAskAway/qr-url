@@ -1903,8 +1903,64 @@
             maskLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
-        document.getElementById('show-layer-3-algorithm').addEventListener('change', (e) => {
-            algorithmDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
+        document.getElementById('show-layer-3-algorithm').addEventListener('change', async (e) => {
+            // If checking the box and algorithm hasn't run yet, run it first
+            if (e.target.checked && Object.keys(sectorColors).length === 0) {
+                console.log('[Layer Control] Algorithm not run yet, running automatically...');
+
+                // Uncheck temporarily while running
+                e.target.checked = false;
+
+                // Trigger algorithm run
+                const button = document.getElementById('run-algorithm');
+                const statsDiv = document.getElementById('algorithm-stats');
+
+                button.disabled = true;
+                button.textContent = '运行中... (Running...)';
+                statsDiv.style.display = 'none';
+
+                try {
+                    const stats = await runConversionAlgorithm();
+                    drawAlgorithmResult();
+                    drawAlgorithmDisplay();
+
+                    // Show stats
+                    let statsHTML = `
+                        <strong>算法统计（纯扇环）：</strong><br>
+                        • 总扇环数：${stats.totalSectors}<br>
+                        • 单色扇环：${stats.sameColorSectors}<br>
+                        • 混色扇环：${stats.mixedColorSectors}<br>
+                        • 耗时：${stats.elapsedSeconds} 秒<br>
+                    `;
+
+                    statsHTML += `
+                        <br>
+                        <strong>颜色说明（三原色）：</strong><br>
+                        • 🔴 红色：原始方形码点<br>
+                        • 🔵 蓝色：人工扇环图像<br>
+                        • 🟢 绿色：算法扇环图像<br>
+                        • ⚪ 白色：留空（不显示）
+                    `;
+
+                    statsDiv.innerHTML = statsHTML;
+                    statsDiv.style.display = 'block';
+
+                    // Now check the box and show layer
+                    e.target.checked = true;
+                    algorithmDisplayLayer.style.display = 'block';
+
+                    console.log('[Algorithm] ✅ Completed successfully! Algorithm layer is now visible.');
+                } catch (error) {
+                    console.error('[Algorithm] Error:', error);
+                    alert('算法执行失败：' + error.message);
+                } finally {
+                    button.disabled = false;
+                    button.textContent = '运行算法 (Run Algorithm)';
+                }
+            } else {
+                // Normal toggle behavior
+                algorithmDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
+            }
         });
 
         document.getElementById('show-layer-4-decoration').addEventListener('change', (e) => {
@@ -2120,11 +2176,11 @@
                 statsDiv.innerHTML = statsHTML;
                 statsDiv.style.display = 'block';
 
-                // Auto enable algorithm layer display
+                // Auto enable algorithm layer display (no alert on success)
                 document.getElementById('show-layer-3-algorithm').checked = true;
                 algorithmDisplayLayer.style.display = 'block';
 
-                alert('算法执行完成！\n请使用"图层控制"复选框查看不同图层：\n1️⃣ 原始 QR 层\n2️⃣ 功能性遮罩层\n3️⃣ 算法扇环层\n4️⃣ 修饰网格层');
+                console.log('[Algorithm] ✅ Completed successfully! Algorithm layer is now visible.');
             } catch (error) {
                 console.error('[Algorithm] Error:', error);
                 alert('算法执行失败：' + error.message);
