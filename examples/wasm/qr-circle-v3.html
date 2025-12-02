@@ -1114,12 +1114,56 @@
             moduleLayer.appendChild(centerDot);
         }
 
+        // Draw circular alignment pattern (5x5 pattern for QR v3)
+        function drawCircularAlignmentPattern(centerX, centerY) {
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const maskId = `alignment-mask-${centerX}-${centerY}`;
+            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+            mask.setAttribute('id', maskId);
+
+            // Outer circle (white)
+            const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerCircle.setAttribute('cx', centerX);
+            outerCircle.setAttribute('cy', centerY);
+            outerCircle.setAttribute('r', 2.5);
+            outerCircle.setAttribute('fill', 'white');
+            mask.appendChild(outerCircle);
+
+            // Inner circle (black - creates white ring)
+            const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            innerCircle.setAttribute('cx', centerX);
+            innerCircle.setAttribute('cy', centerY);
+            innerCircle.setAttribute('r', 1.5);
+            innerCircle.setAttribute('fill', 'black');
+            mask.appendChild(innerCircle);
+
+            defs.appendChild(mask);
+            moduleLayer.appendChild(defs);
+
+            // Draw the outer ring
+            const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerRing.setAttribute('cx', centerX);
+            outerRing.setAttribute('cy', centerY);
+            outerRing.setAttribute('r', 2.5);
+            outerRing.setAttribute('fill', '#FF0000'); // Red (原始QR)
+            outerRing.setAttribute('mask', `url(#${maskId})`);
+            moduleLayer.appendChild(outerRing);
+
+            // Draw the center dot
+            const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            centerDot.setAttribute('cx', centerX);
+            centerDot.setAttribute('cy', centerY);
+            centerDot.setAttribute('r', 1.5);
+            centerDot.setAttribute('fill', '#FF0000'); // Red (原始QR)
+            moduleLayer.appendChild(centerDot);
+        }
+
         // Draw QR modules
         function drawModules() {
             moduleLayer.innerHTML = '';
 
-            // Track which modules are in finder patterns (to skip them)
-            const finderPatternModules = new Set();
+            // Track which modules are in special patterns (to skip them)
+            const specialPatternModules = new Set();
 
             // Draw circular finder patterns
             const finderCenters = [
@@ -1145,15 +1189,26 @@
                 // Mark modules in this finder pattern region (including separator)
                 for (let row = region.rowMin; row < region.rowMax; row++) {
                     for (let col = region.colMin; col < region.colMax; col++) {
-                        finderPatternModules.add(`${row},${col}`);
+                        specialPatternModules.add(`${row},${col}`);
                     }
                 }
             }
 
-            // Draw regular modules (excluding finder patterns) - base state only
+            // Draw circular alignment pattern (QR v3 has 1 alignment pattern at position 22,22)
+            const alignmentCenter = { x: 22.5, y: 22.5 }; // Center at (22, 22), offset by 0.5
+            drawCircularAlignmentPattern(alignmentCenter.x, alignmentCenter.y);
+
+            // Mark alignment pattern region (5x5)
+            for (let row = 20; row <= 24; row++) {
+                for (let col = 20; col <= 24; col++) {
+                    specialPatternModules.add(`${row},${col}`);
+                }
+            }
+
+            // Draw regular modules (excluding special patterns) - base state only
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
-                    if (finderPatternModules.has(`${row},${col}`)) continue;
+                    if (specialPatternModules.has(`${row},${col}`)) continue;
 
                     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                     rect.setAttribute('x', col);
