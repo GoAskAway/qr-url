@@ -186,8 +186,9 @@
                     </label>
                 </div>
                 <div class="control-group">
-                    <label style="color: #607D8B; font-weight: bold;">
-                        2.5 辅助调试层（遮罩之上）
+                    <label>
+                        <input type="checkbox" id="show-layer-2.5-auxiliary" checked>
+                        <span style="color: #607D8B; font-weight: bold;">2.5 辅助调试层（遮罩之上）</span>
                     </label>
                     <div style="margin-left: 24px; margin-top: 5px;">
                         <div style="margin-bottom: 3px;">
@@ -1730,17 +1731,49 @@
         // Error layer
         errorLayer.style.display = 'none';
 
-        // Toggle controls
-        document.getElementById('show-grid').addEventListener('change', (e) => {
-            gridLayer.style.display = e.target.checked ? 'block' : 'none';
+        // Toggle controls for auxiliary layer 2.5
+        const showGrid = document.getElementById('show-grid');
+        const showCircles = document.getElementById('show-circles');
+        const showRadials = document.getElementById('show-radials');
+        const showAuxiliary = document.getElementById('show-layer-2.5-auxiliary');
+
+        // Master checkbox for Layer 2.5
+        showAuxiliary.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+
+            // Toggle visibility of all three sub-layers
+            gridLayer.style.display = isChecked && showGrid.checked ? 'block' : 'none';
+            circleLayer.style.display = isChecked && showCircles.checked ? 'block' : 'none';
+            radialLayer.style.display = isChecked && showRadials.checked ? 'block' : 'none';
+
+            // Enable/disable sub-checkboxes
+            showGrid.disabled = !isChecked;
+            showCircles.disabled = !isChecked;
+            showRadials.disabled = !isChecked;
+
+            // Gray out labels when disabled
+            showGrid.parentElement.style.opacity = isChecked ? '1' : '0.5';
+            showCircles.parentElement.style.opacity = isChecked ? '1' : '0.5';
+            showRadials.parentElement.style.opacity = isChecked ? '1' : '0.5';
         });
 
-        document.getElementById('show-circles').addEventListener('change', (e) => {
-            circleLayer.style.display = e.target.checked ? 'block' : 'none';
+        // Individual sub-layer controls
+        showGrid.addEventListener('change', (e) => {
+            if (showAuxiliary.checked) {
+                gridLayer.style.display = e.target.checked ? 'block' : 'none';
+            }
         });
 
-        document.getElementById('show-radials').addEventListener('change', (e) => {
-            radialLayer.style.display = e.target.checked ? 'block' : 'none';
+        showCircles.addEventListener('change', (e) => {
+            if (showAuxiliary.checked) {
+                circleLayer.style.display = e.target.checked ? 'block' : 'none';
+            }
+        });
+
+        showRadials.addEventListener('change', (e) => {
+            if (showAuxiliary.checked) {
+                radialLayer.style.display = e.target.checked ? 'block' : 'none';
+            }
         });
 
         // show-modules removed - now using show-original for originalDisplayLayer
