@@ -1,0 +1,1291 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Circle Debug Tool</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: monospace;
+            background: #f5f5f5;
+            overflow: hidden;
+        }
+
+        #container {
+            display: flex;
+            height: 100vh;
+            background: white;
+        }
+
+        #left-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow: auto;
+        }
+
+        #right-panel {
+            width: 350px;
+            padding: 20px;
+            background: #fafafa;
+            border-left: 1px solid #ddd;
+            overflow-y: auto;
+        }
+
+        h1 {
+            margin: 0 0 20px 0;
+            font-size: 24px;
+        }
+
+        #svg-container {
+            border: 1px solid #ddd;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+        }
+
+        svg {
+            display: block;
+        }
+
+        .controls {
+            margin: 0;
+        }
+
+        .control-group {
+            margin: 15px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 14px;
+            margin-bottom: 5px;
+        }
+
+        .slider-label span {
+            font-weight: bold;
+            color: #2196F3;
+        }
+
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #fff3cd;
+            border-radius: 4px;
+            font-size: 13px;
+            line-height: 1.6;
+            border: 1px solid #ffc107;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin: 20px 0 10px 0;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #2196F3;
+        }
+
+        @media print {
+            body {
+                background: white;
+                overflow: visible;
+            }
+
+            #container {
+                display: block;
+                height: auto;
+            }
+
+            #left-panel {
+                padding: 0;
+                overflow: visible;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 100vh;
+            }
+
+            #right-panel {
+                display: none;
+            }
+
+            h1 {
+                display: none;
+            }
+
+            #svg-container {
+                border: none;
+                flex: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="left-panel">
+            <h1>QR Circle Debug Tool - 21×21 Grid</h1>
+            <div id="svg-container"></div>
+        </div>
+
+        <div id="right-panel">
+            <div class="section-title">显示选项</div>
+            <div class="controls">
+                <div class="control-group">
+                    <label><input type="checkbox" id="show-grid" checked> 显示底格（网格线）</label>
+                </div>
+                <div class="control-group">
+                    <label><input type="checkbox" id="show-circles" checked> 显示圆环（每0.5单位）</label>
+                </div>
+                <div class="control-group">
+                    <label><input type="checkbox" id="show-radials" checked> 显示放射线（每3°）</label>
+                </div>
+                <div class="control-group">
+                    <label><input type="checkbox" id="show-modules" checked> 显示黑色模块</label>
+                </div>
+                <div class="control-group">
+                    <label><input type="checkbox" id="show-white-rings"> 显示白色环线</label>
+                </div>
+            </div>
+
+            <div class="section-title">视图控制</div>
+            <div class="controls">
+                <div class="control-group">
+                    <button id="reset-view" style="width: 100%; padding: 10px; cursor: pointer; background: #2196F3; color: white; border: none; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">
+                        重置视图 (Reset View)
+                    </button>
+                </div>
+                <div class="control-group">
+                    <button id="clear-modifications" style="width: 100%; padding: 10px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">
+                        清除所有修改 (Clear All)
+                    </button>
+                </div>
+                <div class="control-group">
+                    <button id="export-settings" style="width: 100%; padding: 10px; cursor: pointer; background: #FF9800; color: white; border: none; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">
+                        导出设置 (Export)
+                    </button>
+                </div>
+                <div class="control-group">
+                    <input type="file" id="import-file" accept=".json" style="display: none;">
+                    <button id="import-settings" style="width: 100%; padding: 10px; cursor: pointer; background: #9C27B0; color: white; border: none; border-radius: 4px; font-size: 14px;">
+                        导入设置 (Import)
+                    </button>
+                </div>
+            </div>
+
+            <div class="section-title">QR 识别测试</div>
+            <div class="controls">
+                <div class="control-group">
+                    <button id="test-qr" style="width: 100%; padding: 10px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">
+                        测试识别 (Test QR)
+                    </button>
+                </div>
+                <div class="control-group" style="display: flex; align-items: center; gap: 10px;">
+                    <div id="qr-status-light" style="width: 24px; height: 24px; border-radius: 50%; background: #999; border: 2px solid #666; box-shadow: inset 0 0 5px rgba(0,0,0,0.3);"></div>
+                    <span id="qr-status-text" style="font-size: 14px; color: #666;">未测试</span>
+                </div>
+                <div id="qr-result" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 12px; display: none;"></div>
+            </div>
+
+            <div class="info">
+                <strong>说明：</strong><br>
+                • 21×21 格子，中心 (10.5, 10.5)<br>
+                • 编码内容："HELLO QR"<br>
+                • 圆环：从半径 0.5 开始，每隔 0.5 个单位画一个圆<br>
+                • 放射线：从中心出发，每隔 3° 画一条线，共 120 条<br>
+                • 用于调试和可视化径向/切向关系
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <script>
+        // QR Code v1 parameters
+        const moduleCount = 21;
+        const cellSize = 40; // SVG单位 (doubled for better visibility)
+        const svgSize = moduleCount * cellSize;
+        const center = { x: moduleCount / 2, y: moduleCount / 2 }; // (10.5, 10.5)
+
+        // Create SVG (with 10% margin)
+        const svgContainer = document.getElementById('svg-container');
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('width', svgSize);
+        svg.setAttribute('height', svgSize);
+        // Add 10% margin: viewBox expanded from 21 to ~23.3, centered
+        const margin = moduleCount * 0.1;
+        const initialViewBox = {
+            x: -margin,
+            y: -margin,
+            width: moduleCount + 2 * margin,
+            height: moduleCount + 2 * margin
+        };
+        svg.setAttribute('viewBox', `${initialViewBox.x} ${initialViewBox.y} ${initialViewBox.width} ${initialViewBox.height}`);
+        svgContainer.appendChild(svg);
+
+        // Zoom limits: 50% to 1000% (viewBox width: 50.4 to 2.52)
+        const minViewBoxWidth = initialViewBox.width / 10;  // 1000% zoom
+        const maxViewBoxWidth = initialViewBox.width * 2;   // 50% zoom
+
+        // Generate real QR code using qrcode-generator library
+        function generateQRPattern() {
+            // Create QR code with type 1 (21x21), error correction level L
+            const qr = qrcode(1, 'L');
+            qr.addData('HELLO QR');
+            qr.make();
+
+            const count = qr.getModuleCount();
+            const modules = Array(count).fill(null).map(() => Array(count).fill(false));
+
+            for (let row = 0; row < count; row++) {
+                for (let col = 0; col < count; col++) {
+                    modules[row][col] = qr.isDark(row, col);
+                }
+            }
+
+            return modules;
+        }
+
+        const qrModules = generateQRPattern();
+
+        // Fine-grained cell state management (grid + radials + rings)
+        const STORAGE_KEY_BASE = 'qr-circle-base';
+        const STORAGE_KEY_CELLS = 'qr-circle-cells';
+        let baseModuleState = {}; // { "row,col": true/false } - base QR pattern
+        let cellState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - fine-grained cells
+
+        // Undo/Redo history stacks
+        let undoStack = []; // Stack of operations for undo
+        let redoStack = []; // Stack of operations for redo
+        const MAX_HISTORY = 100; // Maximum history size
+
+        const RADIAL_COUNT = 120; // 120 radial lines (every 3°)
+        const RING_INTERVAL = 0.5; // Ring every 0.5 units
+        const maxRadius = Math.sqrt(2) * moduleCount / 2;
+        const RING_COUNT = Math.ceil(maxRadius / RING_INTERVAL);
+
+        // Calculate which cell a point belongs to
+        function getCellAtPoint(x, y) {
+            const gridRow = Math.floor(y);
+            const gridCol = Math.floor(x);
+
+            // Calculate radial index (angle)
+            const dx = x - center.x;
+            const dy = y - center.y;
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI; // -180 to 180
+            if (angle < 0) angle += 360; // 0 to 360
+            const radialIndex = Math.floor(angle / 3); // 0-119
+
+            // Calculate ring index (radius)
+            const radius = Math.sqrt(dx * dx + dy * dy);
+            const ringIndex = Math.floor(radius / RING_INTERVAL);
+
+            return {
+                gridRow,
+                gridCol,
+                radialIndex,
+                ringIndex,
+                id: `grid:${gridRow},${gridCol}|radial:${radialIndex}|ring:${ringIndex}`
+            };
+        }
+
+        // Get cell state (check cell state first, then fall back to base module)
+        function getCellState(cellId, gridRow, gridCol) {
+            if (cellState.hasOwnProperty(cellId)) {
+                return cellState[cellId];
+            }
+            // Fall back to base module state
+            return baseModuleState[`${gridRow},${gridCol}`] || false;
+        }
+
+        // Toggle cell state
+        function toggleCell(cellInfo) {
+            const currentState = getCellState(cellInfo.id, cellInfo.gridRow, cellInfo.gridCol);
+            const newState = !currentState;
+
+            // Record operation for undo (记录是否在 cellState 中存在)
+            undoStack.push({
+                cellInfo: cellInfo,
+                previousState: currentState,
+                newState: newState,
+                hadCellState: cellState.hasOwnProperty(cellInfo.id) // 记录之前是否在 cellState 中
+            });
+
+            // Limit history size
+            if (undoStack.length > MAX_HISTORY) {
+                undoStack.shift();
+            }
+
+            // Clear redo stack when new operation is performed
+            redoStack = [];
+
+            // Apply change
+            cellState[cellInfo.id] = newState;
+            saveCellState();
+            drawCells();
+        }
+
+        // Undo last operation
+        function undo() {
+            if (undoStack.length === 0) return;
+
+            const operation = undoStack.pop();
+            redoStack.push(operation);
+
+            // Restore previous state
+            if (operation.hadCellState) {
+                // 之前在 cellState 中，恢复原值
+                cellState[operation.cellInfo.id] = operation.previousState;
+            } else {
+                // 之前不在 cellState 中（使用 base state），删除
+                delete cellState[operation.cellInfo.id];
+            }
+
+            console.log('[Undo] cellState after undo:', Object.keys(cellState).length, 'cells');
+
+            saveCellState();
+            drawCells();
+
+            // 强制浏览器重绘
+            svg.getBoundingClientRect();
+        }
+
+        // Redo last undone operation
+        function redo() {
+            if (redoStack.length === 0) return;
+
+            const operation = redoStack.pop();
+            undoStack.push(operation);
+
+            // Reapply operation
+            cellState[operation.cellInfo.id] = operation.newState;
+
+            console.log('[Redo] cellState after redo:', Object.keys(cellState).length, 'cells');
+
+            saveCellState();
+            drawCells();
+
+            // 强制浏览器重绘
+            svg.getBoundingClientRect();
+        }
+
+        // Load/save functions
+        function loadCellState() {
+            // Load base pattern
+            const savedBase = localStorage.getItem(STORAGE_KEY_BASE);
+            if (savedBase) {
+                try {
+                    baseModuleState = JSON.parse(savedBase);
+                } catch (e) {
+                    initializeBaseState();
+                }
+            } else {
+                initializeBaseState();
+            }
+
+            // Load cell modifications
+            const savedCells = localStorage.getItem(STORAGE_KEY_CELLS);
+            if (savedCells) {
+                try {
+                    cellState = JSON.parse(savedCells);
+                } catch (e) {
+                    cellState = {};
+                }
+            }
+        }
+
+        function initializeBaseState() {
+            baseModuleState = {};
+            for (let row = 0; row < moduleCount; row++) {
+                for (let col = 0; col < moduleCount; col++) {
+                    baseModuleState[`${row},${col}`] = qrModules[row][col];
+                }
+            }
+            localStorage.setItem(STORAGE_KEY_BASE, JSON.stringify(baseModuleState));
+        }
+
+        function saveCellState() {
+            localStorage.setItem(STORAGE_KEY_CELLS, JSON.stringify(cellState));
+        }
+
+        loadCellState();
+
+        // Create global defs for clipPaths
+        const globalDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        globalDefs.setAttribute('id', 'global-defs');
+        svg.appendChild(globalDefs);
+
+        // Layer groups (bottom to top: modules, grid, circles, radials, cells)
+        const moduleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        moduleLayer.setAttribute('id', 'module-layer');
+        svg.appendChild(moduleLayer);
+
+        const gridLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        gridLayer.setAttribute('id', 'grid-layer');
+        svg.appendChild(gridLayer);
+
+        const circleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        circleLayer.setAttribute('id', 'circle-layer');
+        svg.appendChild(circleLayer);
+
+        const radialLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        radialLayer.setAttribute('id', 'radial-layer');
+        svg.appendChild(radialLayer);
+
+        // Cell layer for fine-grained cells (on top of everything)
+        const cellLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        cellLayer.setAttribute('id', 'cell-layer');
+        svg.appendChild(cellLayer);
+
+        // White ring layer (white circles overlay, on top of everything)
+        const whiteRingLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        whiteRingLayer.setAttribute('id', 'white-ring-layer');
+        svg.appendChild(whiteRingLayer);
+
+        // Draw grid
+        function drawGrid() {
+            gridLayer.innerHTML = '';
+
+            // Vertical lines
+            for (let i = 0; i <= moduleCount; i++) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', i);
+                line.setAttribute('y1', 0);
+                line.setAttribute('x2', i);
+                line.setAttribute('y2', moduleCount);
+                line.setAttribute('stroke', '#999');
+                line.setAttribute('stroke-width', '1');
+                line.setAttribute('vector-effect', 'non-scaling-stroke');
+                gridLayer.appendChild(line);
+            }
+
+            // Horizontal lines
+            for (let i = 0; i <= moduleCount; i++) {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', 0);
+                line.setAttribute('y1', i);
+                line.setAttribute('x2', moduleCount);
+                line.setAttribute('y2', i);
+                line.setAttribute('stroke', '#999');
+                line.setAttribute('stroke-width', '1');
+                line.setAttribute('vector-effect', 'non-scaling-stroke');
+                gridLayer.appendChild(line);
+            }
+        }
+
+        // Draw circles (every 0.5 unit)
+        function drawCircles() {
+            circleLayer.innerHTML = '';
+
+            const maxRadius = Math.sqrt(2) * moduleCount / 2; // Diagonal distance
+
+            for (let r = 0.5; r <= maxRadius; r += 0.5) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', center.x);
+                circle.setAttribute('cy', center.y);
+                circle.setAttribute('r', r);
+                circle.setAttribute('fill', 'none');
+                circle.setAttribute('stroke', '#ff6b6b');
+                circle.setAttribute('stroke-width', '1');
+                circle.setAttribute('vector-effect', 'non-scaling-stroke');
+                circle.setAttribute('opacity', '0.5');
+                circleLayer.appendChild(circle);
+            }
+        }
+
+        // Draw radial lines (every 3 degrees, 120 total)
+        function drawRadialLines() {
+            radialLayer.innerHTML = '';
+
+            const maxRadius = Math.sqrt(2) * moduleCount / 2;
+
+            for (let degree = 0; degree < 360; degree += 3) { // Every 3 degrees
+                const angle = degree * Math.PI / 180; // Convert to radians
+                const x2 = center.x + maxRadius * Math.cos(angle);
+                const y2 = center.y + maxRadius * Math.sin(angle);
+
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', center.x);
+                line.setAttribute('y1', center.y);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('stroke', '#4ecdc4');
+                line.setAttribute('stroke-width', '1');
+                line.setAttribute('vector-effect', 'non-scaling-stroke');
+                line.setAttribute('opacity', '0.5');
+                radialLayer.appendChild(line);
+            }
+
+            // Draw center point
+            const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            centerDot.setAttribute('cx', center.x);
+            centerDot.setAttribute('cy', center.y);
+            centerDot.setAttribute('r', '0.1');
+            centerDot.setAttribute('fill', '#4ecdc4');
+            radialLayer.appendChild(centerDot);
+        }
+
+        // Draw white rings (overlay circles with white stroke)
+        function drawWhiteRings() {
+            whiteRingLayer.innerHTML = '';
+
+            const maxRadius = Math.sqrt(2) * moduleCount / 2; // Diagonal distance
+
+            for (let r = 0.5; r <= maxRadius; r += 0.5) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', center.x);
+                circle.setAttribute('cy', center.y);
+                circle.setAttribute('r', r);
+                circle.setAttribute('fill', 'none');
+                circle.setAttribute('stroke', 'white');
+                circle.setAttribute('stroke-width', '2');
+                circle.setAttribute('vector-effect', 'non-scaling-stroke');
+                circle.setAttribute('opacity', '0.8');
+                whiteRingLayer.appendChild(circle);
+            }
+        }
+
+        // Check if position is in Finder Pattern
+        function isInFinderPattern(row, col) {
+            // Top-left (0-6, 0-6)
+            if (row < 7 && col < 7) return 'top-left';
+            // Top-right (0-6, 14-20)
+            if (row < 7 && col >= 14) return 'top-right';
+            // Bottom-left (14-20, 0-6)
+            if (row >= 14 && col < 7) return 'bottom-left';
+            return null;
+        }
+
+        // Draw circular finder patterns
+        function drawCircularFinderPattern(centerX, centerY) {
+            const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            const maskId = `finder-mask-${centerX}-${centerY}`;
+            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+            mask.setAttribute('id', maskId);
+
+            // Outer circle (white)
+            const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerCircle.setAttribute('cx', centerX);
+            outerCircle.setAttribute('cy', centerY);
+            outerCircle.setAttribute('r', 3.5);
+            outerCircle.setAttribute('fill', 'white');
+            mask.appendChild(outerCircle);
+
+            // Middle circle (black - creates white ring)
+            const middleCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            middleCircle.setAttribute('cx', centerX);
+            middleCircle.setAttribute('cy', centerY);
+            middleCircle.setAttribute('r', 2.5);
+            middleCircle.setAttribute('fill', 'black');
+            mask.appendChild(middleCircle);
+
+            // Inner circle (white)
+            const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            innerCircle.setAttribute('cx', centerX);
+            innerCircle.setAttribute('cy', centerY);
+            innerCircle.setAttribute('r', 1.5);
+            innerCircle.setAttribute('fill', 'white');
+            mask.appendChild(innerCircle);
+
+            defs.appendChild(mask);
+            moduleLayer.appendChild(defs);
+
+            // Draw the outer ring
+            const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            outerRing.setAttribute('cx', centerX);
+            outerRing.setAttribute('cy', centerY);
+            outerRing.setAttribute('r', 3.5);
+            outerRing.setAttribute('fill', '#000');
+            outerRing.setAttribute('mask', `url(#${maskId})`);
+            moduleLayer.appendChild(outerRing);
+
+            // Draw the center dot
+            const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            centerDot.setAttribute('cx', centerX);
+            centerDot.setAttribute('cy', centerY);
+            centerDot.setAttribute('r', 1.5);
+            centerDot.setAttribute('fill', '#000');
+            moduleLayer.appendChild(centerDot);
+        }
+
+        // Draw QR modules
+        function drawModules() {
+            moduleLayer.innerHTML = '';
+
+            // Track which modules are in finder patterns (to skip them)
+            const finderPatternModules = new Set();
+
+            // Draw circular finder patterns
+            const finderCenters = [
+                { x: 3.5, y: 3.5 },      // Top-left
+                { x: 17.5, y: 3.5 },     // Top-right
+                { x: 3.5, y: 17.5 }      // Bottom-left
+            ];
+
+            // Define finder pattern regions (7x7 squares + 1-cell separator)
+            const finderRegions = [
+                { rowMin: 0, rowMax: 7, colMin: 0, colMax: 7 },      // Top-left (0-6) + separator
+                { rowMin: 0, rowMax: 7, colMin: 14, colMax: 21 },    // Top-right (14-20) + separator
+                { rowMin: 14, rowMax: 21, colMin: 0, colMax: 7 }     // Bottom-left (14-20) + separator
+            ];
+
+            // Draw circular finder patterns
+            for (let i = 0; i < finderCenters.length; i++) {
+                const center = finderCenters[i];
+                const region = finderRegions[i];
+
+                drawCircularFinderPattern(center.x, center.y);
+
+                // Mark modules in this finder pattern region (including separator)
+                for (let row = region.rowMin; row < region.rowMax; row++) {
+                    for (let col = region.colMin; col < region.colMax; col++) {
+                        finderPatternModules.add(`${row},${col}`);
+                    }
+                }
+            }
+
+            // Draw regular modules (excluding finder patterns) - base state only
+            for (let row = 0; row < moduleCount; row++) {
+                for (let col = 0; col < moduleCount; col++) {
+                    if (finderPatternModules.has(`${row},${col}`)) continue;
+
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', col);
+                    rect.setAttribute('y', row);
+                    rect.setAttribute('width', 1);
+                    rect.setAttribute('height', 1);
+                    rect.setAttribute('stroke', 'none');
+                    rect.setAttribute('shape-rendering', 'crispEdges');
+
+                    // Fill based on base module state
+                    if (baseModuleState[`${row},${col}`]) {
+                        rect.setAttribute('fill', '#000');
+                    } else {
+                        rect.setAttribute('fill', 'white');
+                    }
+
+                    moduleLayer.appendChild(rect);
+                }
+            }
+        }
+
+        // Draw fine-grained cells (modified cells overlay)
+        function drawCells() {
+            console.log('[drawCells] Redrawing', Object.keys(cellState).length, 'cells');
+
+            // Clear cell layer and global defs
+            cellLayer.innerHTML = '';
+            globalDefs.innerHTML = '';
+
+            let drawnCount = 0;
+            // Draw each modified cell
+            for (const [cellId, state] of Object.entries(cellState)) {
+                // Parse cell ID: "grid:row,col|radial:idx|ring:idx"
+                const match = cellId.match(/grid:(\d+),(\d+)\|radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const gridRow = parseInt(match[1]);
+                const gridCol = parseInt(match[2]);
+                const radialIndex = parseInt(match[3]);
+                const ringIndex = parseInt(match[4]);
+
+                // Create cell with clipPath
+                const result = createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId);
+                if (!result) continue;
+
+                // Add clipPath to global defs
+                globalDefs.appendChild(result.clipPath);
+
+                // Set fill and style
+                const fillColor = state ? '#000' : 'white';
+                result.path.setAttribute('fill', fillColor);
+                result.path.setAttribute('stroke', 'none');
+                result.path.setAttribute('shape-rendering', 'crispEdges');
+
+                cellLayer.appendChild(result.path);
+                drawnCount++;
+            }
+            console.log('[drawCells] Actually drew', drawnCount, 'cells');
+            console.log('[drawCells] Global defs now has', globalDefs.children.length, 'clipPaths');
+        }
+
+        // Create cell using clipPath for precise intersection
+        function createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId) {
+            const angle1 = radialIndex * 3 * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * 3 * Math.PI / 180;
+            const r1 = ringIndex * RING_INTERVAL;
+            const r2 = (ringIndex + 1) * RING_INTERVAL;
+
+            // Create annular sector (ring sector) path
+            const x1_inner = center.x + r1 * Math.cos(angle1);
+            const y1_inner = center.y + r1 * Math.sin(angle1);
+            const x2_inner = center.x + r1 * Math.cos(angle2);
+            const y2_inner = center.y + r1 * Math.sin(angle2);
+            const x1_outer = center.x + r2 * Math.cos(angle1);
+            const y1_outer = center.y + r2 * Math.sin(angle1);
+            const x2_outer = center.x + r2 * Math.cos(angle2);
+            const y2_outer = center.y + r2 * Math.sin(angle2);
+
+            // Determine if arc is large (> 180 degrees)
+            const largeArc = (angle2 - angle1) > Math.PI ? 1 : 0;
+
+            // Build sector path
+            let sectorPath = `M ${x1_inner} ${y1_inner}`;  // Start at inner arc, angle1
+            sectorPath += ` A ${r1} ${r1} 0 ${largeArc} 1 ${x2_inner} ${y2_inner}`;  // Inner arc to angle2
+            sectorPath += ` L ${x2_outer} ${y2_outer}`;  // Line to outer arc
+            sectorPath += ` A ${r2} ${r2} 0 ${largeArc} 0 ${x1_outer} ${y1_outer}`;  // Outer arc back to angle1
+            sectorPath += ` Z`;  // Close path
+
+            // Create clipPath with grid rectangle
+            const clipPathId = `clip-${cellId.replace(/:/g, '-').replace(/,/g, '_')}`;
+            const clipPath = document.createElementNS('http://www.w3.org/2000/svg', 'clipPath');
+            clipPath.setAttribute('id', clipPathId);
+
+            const clipRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            clipRect.setAttribute('x', gridCol);
+            clipRect.setAttribute('y', gridRow);
+            clipRect.setAttribute('width', 1);
+            clipRect.setAttribute('height', 1);
+            clipPath.appendChild(clipRect);
+
+            // Create path with clipPath applied
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', sectorPath);
+            path.setAttribute('clip-path', `url(#${clipPathId})`);
+
+            return { path, clipPath };
+        }
+
+        // Old function (keep for reference, can be removed later)
+        function createCellPath_OLD(gridRow, gridCol, radialIndex, ringIndex) {
+            const angle1 = radialIndex * 4 * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * 4 * Math.PI / 180;
+            const r1 = ringIndex * RING_INTERVAL;
+            const r2 = (ringIndex + 1) * RING_INTERVAL;
+            const gridLeft = gridCol;
+            const gridRight = gridCol + 1;
+            const gridTop = gridRow;
+            const gridBottom = gridRow + 1;
+
+            // Helper: check if point is in grid bounds
+            const inGrid = (x, y) => x >= gridLeft && x <= gridRight && y >= gridTop && y <= gridBottom;
+
+            // Helper: clip line segment to grid rectangle
+            const clipLineToGrid = (x1, y1, x2, y2) => {
+                // Liang-Barsky algorithm for line-rectangle clipping
+                let t0 = 0, t1 = 1;
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+
+                const clipTest = (p, q) => {
+                    if (p === 0) return q >= 0;
+                    const r = q / p;
+                    if (p < 0) {
+                        if (r > t1) return false;
+                        if (r > t0) t0 = r;
+                    } else {
+                        if (r < t0) return false;
+                        if (r < t1) t1 = r;
+                    }
+                    return true;
+                };
+
+                if (clipTest(-dx, x1 - gridLeft) &&
+                    clipTest(dx, gridRight - x1) &&
+                    clipTest(-dy, y1 - gridTop) &&
+                    clipTest(dy, gridBottom - y1)) {
+                    return {
+                        x1: x1 + t0 * dx,
+                        y1: y1 + t0 * dy,
+                        x2: x1 + t1 * dx,
+                        y2: y1 + t1 * dy
+                    };
+                }
+                return null;
+            };
+
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            let pathData = '';
+            const vertices = [];
+
+            // Calculate radial line segments clipped to grid
+            for (let angle of [angle1, angle2]) {
+                const maxR = Math.sqrt(2) * moduleCount;
+                const x1 = center.x + r1 * Math.cos(angle);
+                const y1 = center.y + r1 * Math.sin(angle);
+                const x2 = center.x + r2 * Math.cos(angle);
+                const y2 = center.y + r2 * Math.sin(angle);
+
+                const clipped = clipLineToGrid(x1, y1, x2, y2);
+                if (clipped) {
+                    vertices.push({x: clipped.x1, y: clipped.y1, angle, r: r1, type: 'radial'});
+                    vertices.push({x: clipped.x2, y: clipped.y2, angle, r: r2, type: 'radial'});
+                }
+            }
+
+            // Add arc endpoints if they're in grid
+            for (let angle of [angle1, angle2]) {
+                for (let r of [r1, r2]) {
+                    const x = center.x + r * Math.cos(angle);
+                    const y = center.y + r * Math.sin(angle);
+                    if (inGrid(x, y)) {
+                        // Already added by radial lines
+                    }
+                }
+            }
+
+            // Sort vertices by angle
+            vertices.sort((a, b) => {
+                const angleA = Math.atan2(a.y - center.y, a.x - center.x);
+                const angleB = Math.atan2(b.y - center.y, b.x - center.x);
+                if (Math.abs(angleA - angleB) < 0.001) {
+                    return a.r - b.r; // Same angle, sort by radius
+                }
+                return angleA - angleB;
+            });
+
+            if (vertices.length < 2) return null;
+
+            // Build path with arcs
+            pathData = `M ${vertices[0].x} ${vertices[0].y}`;
+
+            for (let i = 0; i < vertices.length; i++) {
+                const curr = vertices[i];
+                const next = vertices[(i + 1) % vertices.length];
+
+                const currAngle = Math.atan2(curr.y - center.y, curr.x - center.x);
+                const nextAngle = Math.atan2(next.y - center.y, next.x - center.x);
+                const currR = Math.sqrt(Math.pow(curr.x - center.x, 2) + Math.pow(curr.y - center.y, 2));
+                const nextR = Math.sqrt(Math.pow(next.x - center.x, 2) + Math.pow(next.y - center.y, 2));
+
+                // Check if same radius (arc) or same angle (radial line)
+                if (Math.abs(currR - nextR) < 0.01) {
+                    // Arc segment
+                    const largeArc = Math.abs(nextAngle - currAngle) > Math.PI ? 1 : 0;
+                    pathData += ` A ${currR} ${currR} 0 ${largeArc} 1 ${next.x} ${next.y}`;
+                } else {
+                    // Line segment
+                    pathData += ` L ${next.x} ${next.y}`;
+                }
+            }
+
+            pathData += ' Z';
+            path.setAttribute('d', pathData);
+            return path;
+        }
+
+        // Initial draw
+        drawGrid();
+        drawCircles();
+        drawRadialLines();
+        drawWhiteRings();
+        drawModules();
+        drawCells();
+
+        // 默认隐藏白色环线层
+        whiteRingLayer.style.display = 'none';
+
+        // Toggle controls
+        document.getElementById('show-grid').addEventListener('change', (e) => {
+            gridLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-circles').addEventListener('change', (e) => {
+            circleLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-radials').addEventListener('change', (e) => {
+            radialLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-modules').addEventListener('change', (e) => {
+            moduleLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-white-rings').addEventListener('change', (e) => {
+            whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
+        svg.addEventListener('wheel', (e) => {
+            e.preventDefault();
+
+            // Get mouse position in SVG coordinates
+            const point = svg.createSVGPoint();
+            point.x = e.clientX;
+            point.y = e.clientY;
+            const svgPoint = point.matrixTransform(svg.getScreenCTM().inverse());
+
+            // Calculate zoom factor
+            const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9;
+
+            // Get current viewBox
+            const viewBox = svg.viewBox.baseVal;
+
+            // Calculate new dimensions
+            let newWidth = viewBox.width * zoomFactor;
+            let newHeight = viewBox.height * zoomFactor;
+
+            // Apply zoom limits
+            if (newWidth < minViewBoxWidth) {
+                newWidth = minViewBoxWidth;
+                newHeight = minViewBoxWidth; // Keep aspect ratio
+            }
+            if (newWidth > maxViewBoxWidth) {
+                newWidth = maxViewBoxWidth;
+                newHeight = maxViewBoxWidth;
+            }
+
+            // Adjust viewBox position to keep mouse position fixed
+            const dx = (newWidth - viewBox.width) * (svgPoint.x - viewBox.x) / viewBox.width;
+            const dy = (newHeight - viewBox.height) * (svgPoint.y - viewBox.y) / viewBox.height;
+
+            svg.setAttribute('viewBox', `${viewBox.x - dx} ${viewBox.y - dy} ${newWidth} ${newHeight}`);
+        });
+
+        // Reset view button
+        document.getElementById('reset-view').addEventListener('click', () => {
+            svg.setAttribute('viewBox', `${initialViewBox.x} ${initialViewBox.y} ${initialViewBox.width} ${initialViewBox.height}`);
+        });
+
+        // Clear all modifications button
+        document.getElementById('clear-modifications').addEventListener('click', () => {
+            if (confirm('确定要清除所有修改吗？此操作不可撤销。')) {
+                // Clear localStorage
+                localStorage.removeItem(STORAGE_KEY_BASE);
+                localStorage.removeItem(STORAGE_KEY_CELLS);
+
+                // Reinitialize state
+                cellState = {};
+                initializeBaseState();
+
+                // Redraw
+                drawModules();
+                drawCells();
+            }
+        });
+
+        // Export settings
+        document.getElementById('export-settings').addEventListener('click', () => {
+            const settings = {
+                version: '1.0',
+                timestamp: new Date().toISOString(),
+                qrText: 'HELLO QR',
+                baseModuleState: baseModuleState,
+                cellState: cellState
+            };
+
+            const json = JSON.stringify(settings, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `qr-circle-settings-${Date.now()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            console.log('[Export] 设置已导出');
+        });
+
+        // Import settings
+        document.getElementById('import-settings').addEventListener('click', () => {
+            document.getElementById('import-file').click();
+        });
+
+        document.getElementById('import-file').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const settings = JSON.parse(event.target.result);
+
+                    if (!settings.version) {
+                        alert('无效的设置文件格式');
+                        return;
+                    }
+
+                    // Import base module state
+                    if (settings.baseModuleState) {
+                        baseModuleState = settings.baseModuleState;
+                        localStorage.setItem(STORAGE_KEY_BASE, JSON.stringify(baseModuleState));
+                    }
+
+                    // Import cell state
+                    if (settings.cellState) {
+                        cellState = settings.cellState;
+                        localStorage.setItem(STORAGE_KEY_CELLS, JSON.stringify(cellState));
+                    }
+
+                    // Clear undo/redo stacks
+                    undoStack = [];
+                    redoStack = [];
+
+                    // Redraw
+                    drawModules();
+                    drawCells();
+
+                    console.log('[Import] 设置已导入:', settings);
+                    alert('设置导入成功！');
+                } catch (error) {
+                    console.error('[Import] 导入失败:', error);
+                    alert('导入失败：文件格式错误');
+                }
+            };
+            reader.readAsText(file);
+
+            // Reset file input
+            e.target.value = '';
+        });
+
+        // QR recognition test button
+        document.getElementById('test-qr').addEventListener('click', async () => {
+            const button = document.getElementById('test-qr');
+            const statusLight = document.getElementById('qr-status-light');
+            const statusText = document.getElementById('qr-status-text');
+            const resultDiv = document.getElementById('qr-result');
+
+            // Disable button during test
+            button.disabled = true;
+            button.textContent = '测试中...';
+            statusLight.style.background = '#FFA500'; // Orange
+            statusText.textContent = '识别中...';
+            statusText.style.color = '#FFA500';
+            resultDiv.style.display = 'none';
+
+            try {
+                console.log('[Test QR] Starting test, cellState has', Object.keys(cellState).length, 'cells');
+                console.log('[Test QR] cellLayer children:', cellLayer.children.length);
+
+                // Temporarily hide auxiliary layers
+                const gridDisplay = gridLayer.style.display;
+                const circleDisplay = circleLayer.style.display;
+                const radialDisplay = radialLayer.style.display;
+
+                gridLayer.style.display = 'none';
+                circleLayer.style.display = 'none';
+                radialLayer.style.display = 'none';
+
+                // Wait for repaint (increased to ensure SVG is fully rendered)
+                await new Promise(resolve => setTimeout(resolve, 200));
+
+                // Convert SVG to canvas
+                const canvas = document.createElement('canvas');
+                const scale = 4; // Higher resolution for better recognition
+                canvas.width = moduleCount * scale;
+                canvas.height = moduleCount * scale;
+                const ctx = canvas.getContext('2d');
+
+                // Create a temporary image from SVG
+                const svgData = new XMLSerializer().serializeToString(svg);
+                const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+                const url = URL.createObjectURL(svgBlob);
+
+                const img = new Image();
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = url;
+                });
+
+                // Draw to canvas with white background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                URL.revokeObjectURL(url);
+
+                // Restore auxiliary layers
+                gridLayer.style.display = gridDisplay;
+                circleLayer.style.display = circleDisplay;
+                radialLayer.style.display = radialDisplay;
+
+                // Get image data
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+                // Recognize QR code using jsQR
+                const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                    inversionAttempts: 'dontInvert'
+                });
+
+                if (code) {
+                    // Success - green light
+                    statusLight.style.background = '#4CAF50';
+                    statusLight.style.boxShadow = '0 0 10px #4CAF50, inset 0 0 5px rgba(0,0,0,0.3)';
+                    statusText.textContent = '识别成功 ✓';
+                    statusText.style.color = '#4CAF50';
+
+                    resultDiv.innerHTML = `<strong>识别内容:</strong><br>${code.data}`;
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.background = '#e8f5e9';
+                    resultDiv.style.borderLeft = '4px solid #4CAF50';
+                } else {
+                    // Failed - red light
+                    statusLight.style.background = '#f44336';
+                    statusLight.style.boxShadow = '0 0 10px #f44336, inset 0 0 5px rgba(0,0,0,0.3)';
+                    statusText.textContent = '识别失败 ✗';
+                    statusText.style.color = '#f44336';
+
+                    resultDiv.innerHTML = '<strong>错误:</strong><br>无法识别 QR 码，可能损坏或修改过多';
+                    resultDiv.style.display = 'block';
+                    resultDiv.style.background = '#ffebee';
+                    resultDiv.style.borderLeft = '4px solid #f44336';
+                }
+            } catch (error) {
+                // Error - red light
+                statusLight.style.background = '#f44336';
+                statusLight.style.boxShadow = '0 0 10px #f44336, inset 0 0 5px rgba(0,0,0,0.3)';
+                statusText.textContent = '测试失败';
+                statusText.style.color = '#f44336';
+
+                resultDiv.innerHTML = `<strong>错误:</strong><br>${error.message}`;
+                resultDiv.style.display = 'block';
+                resultDiv.style.background = '#ffebee';
+                resultDiv.style.borderLeft = '4px solid #f44336';
+            } finally {
+                // Re-enable button
+                button.disabled = false;
+                button.textContent = '测试识别 (Test QR)';
+            }
+        });
+
+        // Pan (drag) functionality + click to toggle cell
+        let isPanning = false;
+        let hasMoved = false;
+        let isDragMode = false; // Space key pressed
+        let startPoint = { x: 0, y: 0 };
+        let startClientPoint = { x: 0, y: 0 };
+        let startViewBox = { x: 0, y: 0 };
+
+        // Toggle drag mode with Space key
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && !isDragMode) {
+                isDragMode = true;
+                svg.style.cursor = 'grab';
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') {
+                isDragMode = false;
+                svg.style.cursor = 'crosshair';
+            }
+        });
+
+        svg.addEventListener('mousedown', (e) => {
+            isPanning = true;
+            hasMoved = false;
+            const point = svg.createSVGPoint();
+            point.x = e.clientX;
+            point.y = e.clientY;
+            const svgPoint = point.matrixTransform(svg.getScreenCTM().inverse());
+            startPoint = { x: svgPoint.x, y: svgPoint.y };
+            startClientPoint = { x: e.clientX, y: e.clientY };
+            const viewBox = svg.viewBox.baseVal;
+            startViewBox = { x: viewBox.x, y: viewBox.y };
+
+            if (isDragMode) {
+                svg.style.cursor = 'grabbing';
+            }
+        });
+
+        svg.addEventListener('mousemove', (e) => {
+            if (!isPanning) return;
+
+            // Check if mouse has moved significantly (more than 3 pixels)
+            const dx = e.clientX - startClientPoint.x;
+            const dy = e.clientY - startClientPoint.y;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                hasMoved = true;
+            }
+
+            if (hasMoved && isDragMode) {
+                const point = svg.createSVGPoint();
+                point.x = e.clientX;
+                point.y = e.clientY;
+                const svgPoint = point.matrixTransform(svg.getScreenCTM().inverse());
+
+                const svgDx = svgPoint.x - startPoint.x;
+                const svgDy = svgPoint.y - startPoint.y;
+
+                const viewBox = svg.viewBox.baseVal;
+                svg.setAttribute('viewBox', `${startViewBox.x - svgDx} ${startViewBox.y - svgDy} ${viewBox.width} ${viewBox.height}`);
+            }
+        });
+
+        svg.addEventListener('mouseup', (e) => {
+            if (isPanning && !hasMoved) {
+                // This is a click, not a drag
+                const point = svg.createSVGPoint();
+                point.x = e.clientX;
+                point.y = e.clientY;
+                const svgPoint = point.matrixTransform(svg.getScreenCTM().inverse());
+
+                // Get cell at this point and toggle it (允许矩形外的点击)
+                const cellInfo = getCellAtPoint(svgPoint.x, svgPoint.y);
+                if (cellInfo) {
+                    toggleCell(cellInfo);
+                }
+            }
+
+            isPanning = false;
+            hasMoved = false;
+            svg.style.cursor = isDragMode ? 'grab' : 'crosshair';
+        });
+
+        svg.addEventListener('mouseleave', () => {
+            isPanning = false;
+            hasMoved = false;
+        });
+
+        // Set initial cursor
+        svg.style.cursor = 'crosshair';
+
+        // Keyboard shortcuts for undo/redo
+        document.addEventListener('keydown', (e) => {
+            // Check for Ctrl (Windows/Linux) or Cmd (Mac)
+            const modifier = e.ctrlKey || e.metaKey;
+
+            if (modifier && e.key === 'z' && !e.shiftKey) {
+                // Ctrl+Z or Cmd+Z: Undo
+                e.preventDefault();
+                undo();
+            } else if (modifier && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+                // Ctrl+Y or Cmd+Shift+Z: Redo
+                e.preventDefault();
+                redo();
+            }
+        });
+    </script>
+</body>
+</html>

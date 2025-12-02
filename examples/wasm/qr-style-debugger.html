@@ -1528,8 +1528,11 @@
                     };
                 }
 
-                // Find two cuts for each module: inner cut and outer cut
-                const moduleCuts = new Map(); // key: "row,col", value: {innerRadius, outerRadius}
+                // Phase 1: Expanding blade with unified arcs for adjacent modules
+
+                // Build module geometry map
+                const blackModuleSet = new Set();
+                const moduleGeometry = new Map();
 
                 for (let row = 0; row < moduleCount; row++) {
                     for (let col = 0; col < moduleCount; col++) {
@@ -1537,62 +1540,273 @@
                         if (isInFinderPattern(row, col)) continue;
                         if (isInAlignmentPattern(row, col)) continue;
 
+                        const key = `${row},${col}`;
+                        blackModuleSet.add(key);
+
                         const corners = [
                             { x: col, y: row },
                             { x: col + 1, y: row },
                             { x: col, y: row + 1 },
                             { x: col + 1, y: row + 1 }
                         ];
-
                         const cornerDistances = corners.map(c =>
                             Math.sqrt(Math.pow(c.x - centerX, 2) + Math.pow(c.y - centerY, 2))
                         );
-
                         const minDist = Math.min(...cornerDistances);
                         const maxDist = Math.max(...cornerDistances);
+                        const moduleX = col + 0.5;
+                        const moduleY = row + 0.5;
+                        const centerDist = Math.sqrt(Math.pow(moduleX - centerX, 2) + Math.pow(moduleY - centerY, 2));
 
-                        let lastInnerRadius = null;
-                        let firstOuterRadius = null;
+                        moduleGeometry.set(key, { row, col, minDist, maxDist, centerDist });
+                    }
+                }
 
-                        // From inside out: find last consecutive circle that cuts < threshold
-                        for (let radius = step; radius < maxRadius; radius += step) {
-                            if (radius > minDist && radius < maxDist) {
-                                const { cutRatio, centerInside } = estimateCutRatio(row, col, radius);
+                // Helper: Determine if two adjacent modules are radial or tangential neighbors
+                function getNeighborType(row1, col1, row2, col2) {
+                    const A = { x: col1 + 0.5, y: row1 + 0.5 };
+                    const B = { x: col2 + 0.5, y: row2 + 0.5 };
 
-                                // Inner side: cut away inner part
-                                if (!centerInside && cutRatio < cutThreshold) {
-                                    lastInnerRadius = radius; // Keep updating (last one wins)
-                                } else {
-                                    break; // Stop when we hit a circle that can't cut
+                    // Radial vector from center to A (normalized)
+                    const radial = {
+                        x: A.x - centerX,
+                        y: A.y - centerY
+                    };
+                    const radialLen = Math.sqrt(radial.x * radial.x + radial.y * radial.y);
+                    radial.x /= radialLen;
+                    radial.y /= radialLen;
+
+                    // Vector from A to B (normalized)
+                    const AB = {
+                        x: B.x - A.x,
+                        y: B.y - A.y
+                    };
+                    const ABLen = Math.sqrt(AB.x * AB.x + AB.y * AB.y);
+                    AB.x /= ABLen;
+                    AB.y /= ABLen;
+
+                    // Dot product: cos(angle between radial and AB)
+                    const dotProduct = radial.x * AB.x + radial.y * AB.y;
+
+                    // If dot product close to ±1, radial (longitudinal)
+                    // If dot product close to 0, tangential (lateral)
+                    if (Math.abs(dotProduct) > 0.5) { // Threshold for radial
+                        return 'radial';
+                    } else {
+                        return 'tangential';
+                    }
+                }
+
+                // Build neighbor maps for each module
+                const radialNeighbors = new Map(); // key: "row,col", value: [{key, dist}, ...]
+                const tangentialNeighbors = new Map();
+
+                for (let [key, geom] of moduleGeometry) {
+                    const { row, col, centerDist } = geom;
+                    const radialList = [];
+                    const tangentialList = [];
+
+                    const neighbors = [
+                        { row: row - 1, col: col },
+                        { row: row + 1, col: col },
+                        { row: row, col: col - 1 },
+                        { row: row, col: col + 1 }
+                    ];
+
+                    for (let nb of neighbors) {
+                        const nbKey = `${nb.row},${nb.col}`;
+                        if (blackModuleSet.has(nbKey)) {
+                            const nbGeom = moduleGeometry.get(nbKey);
+                            const type = getNeighborType(row, col, nb.row, nb.col);
+
+                            if (type === 'radial') {
+                                radialList.push({ key: nbKey, dist: nbGeom.centerDist });
+                            } else {
+                                tangentialList.push({ key: nbKey, dist: nbGeom.centerDist });
+                            }
+                        }
+                    }
+
+                    radialNeighbors.set(key, radialList);
+                    tangentialNeighbors.set(key, tangentialList);
+                }
+
+                // Check if module can be cut from inner side
+                function canCutInner(key, geom) {
+                    const radialNbs = radialNeighbors.get(key) || [];
+                    // Check if there's any radial neighbor closer to center (inner side)
+                    for (let nb of radialNbs) {
+                        if (nb.dist < geom.centerDist) {
+                            return false; // Has inner radial neighbor, cannot cut
+                        }
+                    }
+                    return true;
+                }
+
+                // Check if module can be cut from outer side
+                function canCutOuter(key, geom) {
+                    const radialNbs = radialNeighbors.get(key) || [];
+                    // Check if there's any radial neighbor farther from center (outer side)
+                    for (let nb of radialNbs) {
+                        if (nb.dist > geom.centerDist) {
+                            return false; // Has outer radial neighbor, cannot cut
+                        }
+                    }
+                    return true;
+                }
+
+                // Group modules by tangential connectivity (lateral groups)
+                function groupByTangentialConnectivity(moduleKeys) {
+                    const visited = new Set();
+                    const groups = [];
+
+                    for (let key of moduleKeys) {
+                        if (visited.has(key)) continue;
+
+                        const group = [];
+                        const queue = [key];
+                        visited.add(key);
+
+                        while (queue.length > 0) {
+                            const current = queue.shift();
+                            group.push(current);
+
+                            // Only follow tangential neighbors
+                            const tangentialNbs = tangentialNeighbors.get(current) || [];
+                            for (let nb of tangentialNbs) {
+                                if (moduleKeys.includes(nb.key) && !visited.has(nb.key)) {
+                                    visited.add(nb.key);
+                                    queue.push(nb.key);
                                 }
                             }
                         }
 
-                        // From outside in: find first consecutive circle that cuts < threshold
-                        // Start from after lastInnerRadius to avoid overlap
-                        const startRadius = lastInnerRadius ? lastInnerRadius + step : step;
-                        for (let radius = maxRadius; radius >= startRadius; radius -= step) {
-                            if (radius > minDist && radius < maxDist) {
-                                const { cutRatio, centerInside } = estimateCutRatio(row, col, radius);
+                        groups.push(group);
+                    }
 
-                                // Outer side: cut away outer part
-                                if (centerInside && cutRatio < cutThreshold) {
-                                    firstOuterRadius = radius; // Keep updating (first one wins)
-                                } else {
-                                    break; // Stop when we hit a circle that can't cut
+                    return groups;
+                }
+
+                // Step 1: Find innerRadius - expand from inside out
+                const moduleInnerRadius = new Map();
+                const innerFinalized = new Set();
+
+                for (let radius = step; radius < maxRadius; radius += step) {
+                    // Find modules that:
+                    // 1. Not finalized yet
+                    // 2. Intersected by this radius
+                    // 3. Can be cut from inner side (no inner radial neighbor)
+                    const affectedKeys = [];
+
+                    for (let [key, geom] of moduleGeometry) {
+                        if (innerFinalized.has(key)) continue;
+                        if (radius > geom.minDist && radius < geom.maxDist) {
+                            if (canCutInner(key, geom)) {
+                                const { centerInside } = estimateCutRatio(geom.row, geom.col, radius);
+                                if (!centerInside) { // Center outside = cutting inner part
+                                    affectedKeys.push(key);
                                 }
                             }
                         }
+                    }
 
-                        // Store if we found valid cuts
-                        if (lastInnerRadius || firstOuterRadius) {
-                            const key = `${row},${col}`;
-                            moduleCuts.set(key, { innerCutRadius: lastInnerRadius, outerCutRadius: firstOuterRadius });
+                    // Group by tangential connectivity (横向统一)
+                    const tangentialGroups = groupByTangentialConnectivity(affectedKeys);
+
+                    for (let group of tangentialGroups) {
+                        // Check if any module in this tangential group exceeds threshold
+                        let exceeds = false;
+                        for (let key of group) {
+                            const geom = moduleGeometry.get(key);
+                            const { cutRatio } = estimateCutRatio(geom.row, geom.col, radius);
+                            if (cutRatio >= cutThreshold) {
+                                exceeds = true;
+                                break;
+                            }
+                        }
+
+                        if (exceeds) {
+                            // This tangential group reached boundary, finalize all
+                            for (let key of group) {
+                                innerFinalized.add(key);
+                            }
+                        } else {
+                            // Continue expanding, update innerRadius for all in group
+                            for (let key of group) {
+                                moduleInnerRadius.set(key, radius);
+                            }
                         }
                     }
                 }
 
-                // Draw modules with their two cuts (keep middle annulus part)
+                // Step 2: Find outerRadius - contract from outside in
+                const moduleOuterRadius = new Map();
+                const outerFinalized = new Set();
+
+                for (let radius = maxRadius; radius >= step; radius -= step) {
+                    // Find modules that:
+                    // 1. Not finalized yet
+                    // 2. Intersected by this radius
+                    // 3. Can be cut from outer side (no outer radial neighbor)
+                    const affectedKeys = [];
+
+                    for (let [key, geom] of moduleGeometry) {
+                        if (outerFinalized.has(key)) continue;
+                        if (radius > geom.minDist && radius < geom.maxDist) {
+                            if (canCutOuter(key, geom)) {
+                                const { centerInside } = estimateCutRatio(geom.row, geom.col, radius);
+                                if (centerInside) { // Center inside = cutting outer part
+                                    affectedKeys.push(key);
+                                }
+                            }
+                        }
+                    }
+
+                    // Group by tangential connectivity (横向统一)
+                    const tangentialGroups = groupByTangentialConnectivity(affectedKeys);
+
+                    for (let group of tangentialGroups) {
+                        // Check if any module in this tangential group exceeds threshold
+                        let exceeds = false;
+                        for (let key of group) {
+                            const geom = moduleGeometry.get(key);
+                            const { cutRatio } = estimateCutRatio(geom.row, geom.col, radius);
+                            if (cutRatio >= cutThreshold) {
+                                exceeds = true;
+                                break;
+                            }
+                        }
+
+                        if (exceeds) {
+                            // This tangential group reached boundary, finalize all
+                            for (let key of group) {
+                                outerFinalized.add(key);
+                            }
+                        } else {
+                            // Continue contracting, update outerRadius for all in group
+                            for (let key of group) {
+                                moduleOuterRadius.set(key, radius);
+                            }
+                        }
+                    }
+                }
+
+                // Step 3: Combine results
+                const moduleCuts = new Map();
+
+                for (let key of blackModuleSet) {
+                    const innerRadius = moduleInnerRadius.get(key) || null;
+                    const outerRadius = moduleOuterRadius.get(key) || null;
+
+                    if (innerRadius || outerRadius) {
+                        moduleCuts.set(key, {
+                            innerCutRadius: innerRadius,
+                            outerCutRadius: outerRadius
+                        });
+                    }
+                }
+
+                // Draw modules with their cuts (keep middle annulus part)
                 for (let [key, { innerCutRadius, outerCutRadius }] of moduleCuts) {
                     const [row, col] = key.split(',').map(Number);
 
