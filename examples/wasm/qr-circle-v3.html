@@ -157,22 +157,6 @@
         </div>
 
         <div id="right-panel">
-            <div class="section-title">显示选项</div>
-            <div class="controls">
-                <div class="control-group">
-                    <label><input type="checkbox" id="show-grid" checked> 显示底格（网格线）</label>
-                </div>
-                <div class="control-group">
-                    <label><input type="checkbox" id="show-circles" checked> 显示圆环（每0.5单位）</label>
-                </div>
-                <div class="control-group">
-                    <label><input type="checkbox" id="show-radials" checked> 显示放射线（每3°）</label>
-                </div>
-                <div class="control-group">
-                    <label><input type="checkbox" id="show-white-rings"> 显示白色环线</label>
-                </div>
-            </div>
-
             <div class="section-title">QR 识别测试</div>
             <div class="controls">
                 <div class="control-group">
@@ -205,6 +189,22 @@
                         <button id="clear-mask" style="margin-top: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;">
                             清除遮罩
                         </button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label style="color: #607D8B; font-weight: bold;">
+                        2.5 辅助调试层（遮罩之上）
+                    </label>
+                    <div style="margin-left: 24px; margin-top: 5px;">
+                        <div style="margin-bottom: 3px;">
+                            <label><input type="checkbox" id="show-grid" checked> 网格线</label>
+                        </div>
+                        <div style="margin-bottom: 3px;">
+                            <label><input type="checkbox" id="show-circles" checked> 圆环（每0.5单位）</label>
+                        </div>
+                        <div style="margin-bottom: 3px;">
+                            <label><input type="checkbox" id="show-radials" checked> 放射线（每3°）</label>
+                        </div>
                     </div>
                 </div>
                 <div class="control-group">
@@ -253,14 +253,18 @@
             </div>
 
             <div class="info">
-                <strong>说明：</strong><br>
-                • 29×29 格子，中心 (14.5, 14.5)<br>
-                • 编码内容：HTTPS://LETS.GO/LXPB$2PI-W6JBZS$BL6<br>
-                • 编码模式：ALPHANUMERIC (大写)<br>
-                • 容错级别：H (30%)<br>
-                • 圆环：从半径 0.5 开始，每隔 0.5 个单位画一个圆<br>
-                • 放射线：从中心出发，每隔 3° 画一条线，共 120 条<br>
-                • 用于调试和可视化径向/切向关系
+                <strong>QR 码信息：</strong><br>
+                • 版本：v3 (29×29)，中心 (14.5, 14.5)<br>
+                • 内容：HTTPS://LETS.GO/LXPB$2PI-W6JBZS$BL6<br>
+                • 编码：ALPHANUMERIC (大写)<br>
+                • 容错：H 级别 (30%)<br>
+                <br>
+                <strong>图层架构（自下而上）：</strong><br>
+                • 1️⃣ 原始 QR 层：红色+白色背景<br>
+                • 2️⃣ 功能性遮罩层：白色留白区域<br>
+                • 2.5 辅助调试层：网格线、圆环、放射线（遮罩之上）<br>
+                • 3️⃣ 算法扇环层：绿色扇环图案<br>
+                • 4️⃣ 修饰网格层：白色环形装饰<br>
             </div>
         </div>
     </div>
@@ -364,35 +368,12 @@
         globalDefs.setAttribute('id', 'global-defs');
         svg.appendChild(globalDefs);
 
-        // Layer groups (bottom to top: modules, grid, circles, radials, cells)
+        // Module layer (for finder patterns, alignment patterns, etc.)
         const moduleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         moduleLayer.setAttribute('id', 'module-layer');
         svg.appendChild(moduleLayer);
 
-        const gridLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        gridLayer.setAttribute('id', 'grid-layer');
-        svg.appendChild(gridLayer);
-
-        const circleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        circleLayer.setAttribute('id', 'circle-layer');
-        svg.appendChild(circleLayer);
-
-        const radialLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        radialLayer.setAttribute('id', 'radial-layer');
-        svg.appendChild(radialLayer);
-
-        // White ring layer (white circles overlay, on top of everything)
-        const whiteRingLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        whiteRingLayer.setAttribute('id', 'white-ring-layer');
-        svg.appendChild(whiteRingLayer);
-
-        // Algorithm layer (automatic conversion result, highest z-index for comparison)
-        const algorithmLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        algorithmLayer.setAttribute('id', 'algorithm-layer');
-        algorithmLayer.setAttribute('opacity', '0.7'); // Semi-transparent for comparison
-        svg.appendChild(algorithmLayer);
-
-        // === Four-layer design (bottom to top) ===
+        // === Layer architecture (bottom to top) ===
         // Layer 1: Original QR layer (red + white background, fully opaque)
         const originalDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         originalDisplayLayer.setAttribute('id', 'layer-1-original');
@@ -405,16 +386,40 @@
         maskLayer.setAttribute('opacity', '1'); // Fully opaque
         svg.appendChild(maskLayer);
 
+        // Layer 2.5: Auxiliary debug layer (above mask, below algorithm)
+        const gridLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        gridLayer.setAttribute('id', 'grid-layer');
+        svg.appendChild(gridLayer);
+
+        const circleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        circleLayer.setAttribute('id', 'circle-layer');
+        svg.appendChild(circleLayer);
+
+        const radialLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        radialLayer.setAttribute('id', 'radial-layer');
+        svg.appendChild(radialLayer);
+
         // Layer 3: Algorithm annular layer (green, fully opaque)
         const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         algorithmDisplayLayer.setAttribute('id', 'layer-3-algorithm');
         algorithmDisplayLayer.setAttribute('opacity', '1'); // Fully opaque
         svg.appendChild(algorithmDisplayLayer);
 
+        // Layer 4: White ring decoration layer (on top of algorithm layer)
+        const whiteRingLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        whiteRingLayer.setAttribute('id', 'white-ring-layer');
+        svg.appendChild(whiteRingLayer);
+
         // Error detection layer: highlight insufficient coverage (highest z-index)
         const errorLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         errorLayer.setAttribute('id', 'error-layer');
         svg.appendChild(errorLayer);
+
+        // Legacy algorithm layer (kept for compatibility)
+        const algorithmLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        algorithmLayer.setAttribute('id', 'algorithm-layer');
+        algorithmLayer.setAttribute('opacity', '0.7'); // Semi-transparent for comparison
+        svg.appendChild(algorithmLayer);
 
         // Draw grid
         function drawGrid() {
