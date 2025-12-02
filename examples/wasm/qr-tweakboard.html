@@ -2027,29 +2027,8 @@
                 }
             }
 
-            // 3. Alignment pattern white modules (for versions >= 2)
-            // Alignment pattern structure: 5x5 pattern with white ring
-            // Outer 5x5: black, Inner 3x3: white, Center 1x1: black
-            // So white modules form a ring around the center black module
-            if (alignCenter) {
-                const whitePositions = [
-                    // Top row of white ring
-                    [alignCenter - 1, alignCenter - 1],
-                    [alignCenter - 1, alignCenter],
-                    [alignCenter - 1, alignCenter + 1],
-                    // Middle row (left and right)
-                    [alignCenter, alignCenter - 1],
-                    // center is black: [alignCenter, alignCenter]
-                    [alignCenter, alignCenter + 1],
-                    // Bottom row of white ring
-                    [alignCenter + 1, alignCenter - 1],
-                    [alignCenter + 1, alignCenter],
-                    [alignCenter + 1, alignCenter + 1]
-                ];
-                whitePositions.forEach(([row, col]) => {
-                    hollowRects.push({ x: col, y: row, w: 1, h: 1 });
-                });
-            }
+            // 3. Alignment pattern is now handled as solid circle in qr-circle-v3.html
+            // No need to mask individual modules
 
             // 4. Remainder bits (modules after all codewords are placed)
             // Generate all data module positions in zig-zag order
