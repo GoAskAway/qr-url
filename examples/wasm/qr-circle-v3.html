@@ -337,17 +337,9 @@
             localStorage.setItem(STORAGE_KEY_BASE, JSON.stringify(baseModuleState));
         }
 
-        // Load base pattern
-        const savedBase = localStorage.getItem(STORAGE_KEY_BASE);
-        if (savedBase) {
-            try {
-                baseModuleState = JSON.parse(savedBase);
-            } catch (e) {
-                initializeBaseState();
-            }
-        } else {
-            initializeBaseState();
-        }
+        // Always initialize with freshly generated QR code
+        // (ignore localStorage to ensure we use the latest QR data)
+        initializeBaseState();
 
         // Create global defs for clipPaths
         const globalDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
