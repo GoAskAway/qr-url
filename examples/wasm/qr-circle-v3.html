@@ -2107,6 +2107,17 @@
             resultDiv.style.display = 'none';
 
             try {
+                // Temporarily hide auxiliary debug layers (2.5) for clean QR recognition
+                const savedGridDisplay = gridLayer.style.display;
+                const savedCircleDisplay = circleLayer.style.display;
+                const savedRadialDisplay = radialLayer.style.display;
+
+                gridLayer.style.display = 'none';
+                circleLayer.style.display = 'none';
+                radialLayer.style.display = 'none';
+
+                console.log('[QR Test] Temporarily hiding auxiliary layers (grid, circles, radials)');
+
                 // Get the SVG element
                 const svgElement = svg;
                 const svgRect = svgElement.getBoundingClientRect();
@@ -2176,11 +2187,22 @@
                         console.log('[QR Test] Failed to recognize QR code');
                     }
 
+                    // Restore auxiliary layers
+                    gridLayer.style.display = savedGridDisplay;
+                    circleLayer.style.display = savedCircleDisplay;
+                    radialLayer.style.display = savedRadialDisplay;
+                    console.log('[QR Test] Restored auxiliary layers');
+
                     button.disabled = false;
                     button.textContent = '测试识别 (Test QR)';
                 };
 
                 img.onerror = () => {
+                    // Restore auxiliary layers
+                    gridLayer.style.display = savedGridDisplay;
+                    circleLayer.style.display = savedCircleDisplay;
+                    radialLayer.style.display = savedRadialDisplay;
+
                     statusLight.style.background = '#f44336'; // Red
                     statusText.textContent = '加载失败';
                     statusText.style.color = '#f44336';
@@ -2193,6 +2215,16 @@
 
             } catch (error) {
                 console.error('[QR Test] Error:', error);
+
+                // Restore auxiliary layers if error occurs
+                try {
+                    gridLayer.style.display = savedGridDisplay;
+                    circleLayer.style.display = savedCircleDisplay;
+                    radialLayer.style.display = savedRadialDisplay;
+                } catch (e) {
+                    // Ignore restoration errors
+                }
+
                 statusLight.style.background = '#f44336'; // Red
                 statusText.textContent = '测试失败';
                 statusText.style.color = '#f44336';
