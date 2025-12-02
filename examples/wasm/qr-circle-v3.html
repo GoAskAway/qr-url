@@ -152,7 +152,7 @@
 <body>
     <div id="container">
         <div id="left-panel">
-            <h1>QR Circle Debug Tool - 21×21 Grid</h1>
+            <h1>QR Circle Debug Tool - 29×29 Grid</h1>
             <div id="svg-container"></div>
         </div>
 
@@ -236,7 +236,7 @@
 
             <div class="info">
                 <strong>说明：</strong><br>
-                • 21×21 格子，中心 (10.5, 10.5)<br>
+                • 29×29 格子，中心 (14.5, 14.5)<br>
                 • 编码内容："HELLO QR"<br>
                 • 圆环：从半径 0.5 开始，每隔 0.5 个单位画一个圆<br>
                 • 放射线：从中心出发，每隔 3° 画一条线，共 120 条<br>
@@ -248,18 +248,18 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <script>
-        // QR Code v1 parameters
-        const moduleCount = 21;
+        // QR Code v3 parameters
+        const moduleCount = 29;
         const cellSize = 40; // SVG单位 (doubled for better visibility)
         const svgSize = moduleCount * cellSize;
-        const center = { x: moduleCount / 2, y: moduleCount / 2 }; // (10.5, 10.5)
+        const center = { x: moduleCount / 2, y: moduleCount / 2 }; // (14.5, 14.5)
 
         // Create SVG (with 10% margin)
         const svgContainer = document.getElementById('svg-container');
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('width', svgSize);
         svg.setAttribute('height', svgSize);
-        // Add 10% margin: viewBox expanded from 21 to ~23.3, centered
+        // Add 10% margin: viewBox expanded from 29 to ~31.9, centered
         const margin = moduleCount * 0.1;
         const initialViewBox = {
             x: -margin,
@@ -276,8 +276,8 @@
 
         // Generate real QR code using qrcode-generator library
         function generateQRPattern() {
-            // Create QR code with type 1 (21x21), error correction level L
-            const qr = qrcode(1, 'L');
+            // Create QR code with type 3 (29x29), error correction level L
+            const qr = qrcode(3, 'L');
             qr.addData('HELLO QR');
             qr.make();
 
@@ -1116,15 +1116,15 @@
             // Draw circular finder patterns
             const finderCenters = [
                 { x: 3.5, y: 3.5 },      // Top-left
-                { x: 17.5, y: 3.5 },     // Top-right
-                { x: 3.5, y: 17.5 }      // Bottom-left
+                { x: 25.5, y: 3.5 },     // Top-right
+                { x: 3.5, y: 25.5 }      // Bottom-left
             ];
 
             // Define finder pattern regions (7x7 squares + 1-cell separator)
             const finderRegions = [
                 { rowMin: 0, rowMax: 7, colMin: 0, colMax: 7 },      // Top-left (0-6) + separator
-                { rowMin: 0, rowMax: 7, colMin: 14, colMax: 21 },    // Top-right (14-20) + separator
-                { rowMin: 14, rowMax: 21, colMin: 0, colMax: 7 }     // Bottom-left (14-20) + separator
+                { rowMin: 0, rowMax: 7, colMin: 21, colMax: 28 },    // Top-right (21-27) + separator
+                { rowMin: 21, rowMax: 28, colMin: 0, colMax: 7 }     // Bottom-left (21-27) + separator
             ];
 
             // Draw circular finder patterns
