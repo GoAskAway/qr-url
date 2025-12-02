@@ -169,9 +169,6 @@
                     <label><input type="checkbox" id="show-radials" checked> 显示放射线（每3°）</label>
                 </div>
                 <div class="control-group">
-                    <label><input type="checkbox" id="show-modules" checked> 显示黑色模块</label>
-                </div>
-                <div class="control-group">
                     <label><input type="checkbox" id="show-white-rings"> 显示白色环线</label>
                 </div>
             </div>
@@ -1519,6 +1516,10 @@
         whiteRingLayer.style.display = 'none';
         algorithmLayer.style.display = 'none';
 
+        // 隐藏旧的图层（现在使用新的独立显示图层）
+        moduleLayer.style.display = 'none';
+        cellLayer.style.display = 'none';
+
         // 默认隐藏算法显示层（其他两个默认显示）
         algorithmDisplayLayer.style.display = 'none';
 
@@ -1535,9 +1536,7 @@
             radialLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
-        document.getElementById('show-modules').addEventListener('change', (e) => {
-            moduleLayer.style.display = e.target.checked ? 'block' : 'none';
-        });
+        // show-modules removed - now using show-original for originalDisplayLayer
 
         document.getElementById('show-white-rings').addEventListener('change', (e) => {
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
