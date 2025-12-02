@@ -215,6 +215,19 @@
                 <div id="qr-result" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 12px; display: none;"></div>
             </div>
 
+            <div class="section-title">自动环扇形转换算法</div>
+            <div class="controls">
+                <div class="control-group">
+                    <button id="run-algorithm" style="width: 100%; padding: 10px; cursor: pointer; background: #9C27B0; color: white; border: none; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">
+                        运行算法 (Run Algorithm)
+                    </button>
+                </div>
+                <div class="control-group">
+                    <label><input type="checkbox" id="show-algorithm"> 显示算法结果（蓝/青色）</label>
+                </div>
+                <div id="algorithm-stats" style="margin-top: 10px; padding: 10px; background: #f3e5f5; border-radius: 4px; font-size: 12px; display: none;"></div>
+            </div>
+
             <div class="info">
                 <strong>说明：</strong><br>
                 • 21×21 格子，中心 (10.5, 10.5)<br>
@@ -280,7 +293,11 @@
         const STORAGE_KEY_BASE = 'qr-circle-base';
         const STORAGE_KEY_CELLS = 'qr-circle-cells';
         let baseModuleState = {}; // { "row,col": true/false } - base QR pattern
-        let cellState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - fine-grained cells
+        let cellState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - fine-grained cells (manual edits)
+
+        // Algorithm state (automatic conversion result)
+        let algorithmState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - algorithm calculated cells
+        let algorithmStats = null; // Algorithm execution statistics
 
         // Undo/Redo history stacks
         let undoStack = []; // Stack of operations for undo
@@ -470,6 +487,12 @@
         whiteRingLayer.setAttribute('id', 'white-ring-layer');
         svg.appendChild(whiteRingLayer);
 
+        // Algorithm layer (automatic conversion result, highest z-index for comparison)
+        const algorithmLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        algorithmLayer.setAttribute('id', 'algorithm-layer');
+        algorithmLayer.setAttribute('opacity', '0.7'); // Semi-transparent for comparison
+        svg.appendChild(algorithmLayer);
+
         // Draw grid
         function drawGrid() {
             gridLayer.innerHTML = '';
@@ -571,6 +594,347 @@
                 circle.setAttribute('opacity', '0.8');
                 whiteRingLayer.appendChild(circle);
             }
+        }
+
+        // ========== ALGORITHM: Automatic Sector-Ring Conversion ==========
+
+        // Check if a point is inside an annular sector (ring segment)
+        function isPointInSector(px, py, radialIndex, ringIndex) {
+            const dx = px - center.x;
+            const dy = py - center.y;
+            const radius = Math.sqrt(dx * dx + dy * dy);
+
+            // Check radius range
+            const r1 = ringIndex * RING_INTERVAL;
+            const r2 = (ringIndex + 1) * RING_INTERVAL;
+            if (radius < r1 || radius > r2) return false;
+
+            // Check angle range
+            let angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (angle < 0) angle += 360;
+            const a1 = radialIndex * 3;
+            const a2 = (radialIndex + 1) * 3;
+
+            return angle >= a1 && angle < a2;
+        }
+
+        // Calculate overlap area between a sector and a grid cell using Monte Carlo sampling
+        function calculateOverlapArea(gridRow, gridCol, radialIndex, ringIndex, samples = 100) {
+            let hits = 0;
+
+            // Sample points in the grid cell
+            for (let i = 0; i < samples; i++) {
+                for (let j = 0; j < samples; j++) {
+                    const px = gridCol + (i + 0.5) / samples;
+                    const py = gridRow + (j + 0.5) / samples;
+
+                    if (isPointInSector(px, py, radialIndex, ringIndex)) {
+                        hits++;
+                    }
+                }
+            }
+
+            const cellArea = 1.0; // Unit cell area
+            return (hits / (samples * samples)) * cellArea;
+        }
+
+        // Find all sectors that overlap with a grid cell
+        function findOverlappingSectors(gridRow, gridCol) {
+            const overlaps = [];
+            const maxRadius = Math.sqrt(2) * moduleCount / 2;
+            const maxRing = Math.ceil(maxRadius / RING_INTERVAL);
+
+            // Check cell center to determine which radials/rings might overlap
+            const cellCenterX = gridCol + 0.5;
+            const cellCenterY = gridRow + 0.5;
+            const dx = cellCenterX - center.x;
+            const dy = cellCenterY - center.y;
+            const cellRadius = Math.sqrt(dx * dx + dy * dy);
+            let cellAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+            if (cellAngle < 0) cellAngle += 360;
+
+            // Search nearby rings (±1 from cell center ring)
+            const centerRing = Math.floor(cellRadius / RING_INTERVAL);
+            for (let ring = Math.max(0, centerRing - 1); ring <= Math.min(maxRing, centerRing + 2); ring++) {
+                // Search nearby radials (±2 from cell center radial)
+                const centerRadial = Math.floor(cellAngle / 3);
+                for (let radial = centerRadial - 2; radial <= centerRadial + 2; radial++) {
+                    const normalizedRadial = ((radial % 120) + 120) % 120;
+
+                    const overlapArea = calculateOverlapArea(gridRow, gridCol, normalizedRadial, ring, 50);
+                    if (overlapArea > 0.001) { // Threshold to avoid floating point noise
+                        const cellId = `grid:${gridRow},${gridCol}|radial:${normalizedRadial}|ring:${ring}`;
+                        overlaps.push({
+                            cellId,
+                            radialIndex: normalizedRadial,
+                            ringIndex: ring,
+                            overlapArea
+                        });
+                    }
+                }
+            }
+
+            return overlaps;
+        }
+
+        // Find all grid cells that overlap with a sector
+        function findOverlappingGridCells(radialIndex, ringIndex) {
+            const overlaps = [];
+
+            // Determine bounding box of the sector
+            const r1 = ringIndex * RING_INTERVAL;
+            const r2 = (ringIndex + 1) * RING_INTERVAL;
+            const a1 = radialIndex * 3 * Math.PI / 180;
+            const a2 = (radialIndex + 1) * 3 * Math.PI / 180;
+
+            // Calculate sector bounding box
+            const points = [
+                { x: center.x + r1 * Math.cos(a1), y: center.y + r1 * Math.sin(a1) },
+                { x: center.x + r1 * Math.cos(a2), y: center.y + r1 * Math.sin(a2) },
+                { x: center.x + r2 * Math.cos(a1), y: center.y + r2 * Math.sin(a1) },
+                { x: center.x + r2 * Math.cos(a2), y: center.y + r2 * Math.sin(a2) }
+            ];
+
+            const minRow = Math.floor(Math.min(...points.map(p => p.y))) - 1;
+            const maxRow = Math.ceil(Math.max(...points.map(p => p.y))) + 1;
+            const minCol = Math.floor(Math.min(...points.map(p => p.x))) - 1;
+            const maxCol = Math.ceil(Math.max(...points.map(p => p.x))) + 1;
+
+            // Check each grid cell in bounding box
+            for (let row = minRow; row <= maxRow; row++) {
+                for (let col = minCol; col <= maxCol; col++) {
+                    const overlapArea = calculateOverlapArea(row, col, radialIndex, ringIndex, 50);
+                    if (overlapArea > 0.001) {
+                        overlaps.push({
+                            gridRow: row,
+                            gridCol: col,
+                            overlapArea
+                        });
+                    }
+                }
+            }
+
+            return overlaps;
+        }
+
+        // Calculate cost for assigning black/white to a sector
+        function calculateSectorCost(radialIndex, ringIndex) {
+            const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
+
+            let costIfBlack = 0;
+            let costIfWhite = 0;
+
+            for (const overlap of overlappingGrids) {
+                const { gridRow, gridCol, overlapArea } = overlap;
+                const isGridBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+
+                if (isGridBlack) {
+                    // Grid is black: prefer black sector (no cost), white sector costs (subtraction)
+                    costIfBlack += 0;
+                    costIfWhite += overlapArea;
+                } else {
+                    // Grid is white: prefer white sector (no cost), black sector costs (addition)
+                    costIfBlack += overlapArea;
+                    costIfWhite += 0;
+                }
+            }
+
+            return {
+                costIfBlack,
+                costIfWhite,
+                bestColor: costIfBlack <= costIfWhite
+            };
+        }
+
+        // Check if a grid cell violates the 25% constraint
+        function checkGridConstraint(gridRow, gridCol) {
+            const isGridBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+            const gridArea = 1.0;
+            const maxChange = gridArea * 0.25;
+
+            const overlappingSectors = findOverlappingSectors(gridRow, gridCol);
+
+            let totalChange = 0;
+            for (const sector of overlappingSectors) {
+                const sectorColor = algorithmState[sector.cellId];
+                if (sectorColor === undefined) continue;
+
+                const overlapArea = sector.overlapArea;
+
+                if (isGridBlack && !sectorColor) {
+                    // Grid black, sector white -> subtraction
+                    totalChange += overlapArea;
+                } else if (!isGridBlack && sectorColor) {
+                    // Grid white, sector black -> addition
+                    totalChange += overlapArea;
+                }
+            }
+
+            return {
+                violated: totalChange > maxChange,
+                totalChange,
+                maxChange,
+                percentage: (totalChange / gridArea) * 100
+            };
+        }
+
+        // Main algorithm: Convert rectangular QR to circular sector-ring pattern
+        async function runConversionAlgorithm() {
+            console.log('[Algorithm] Starting automatic conversion...');
+            const startTime = performance.now();
+
+            algorithmState = {};
+            const maxRadius = Math.sqrt(2) * moduleCount / 2;
+            const maxRing = Math.ceil(maxRadius / RING_INTERVAL);
+            const totalSectors = 120 * maxRing;
+
+            // Phase 1: Initial greedy assignment
+            console.log('[Algorithm] Phase 1: Greedy assignment...');
+            let processedSectors = 0;
+            for (let ring = 0; ring <= maxRing; ring++) {
+                for (let radial = 0; radial < 120; radial++) {
+                    const cost = calculateSectorCost(radial, ring);
+                    const cellId = `grid:*,*|radial:${radial}|ring:${ring}`;
+                    algorithmState[cellId] = cost.bestColor;
+                    processedSectors++;
+
+                    if (processedSectors % 100 === 0) {
+                        console.log(`[Algorithm] Processed ${processedSectors}/${totalSectors} sectors`);
+                    }
+                }
+            }
+
+            // Phase 2: Check constraints and iterative refinement
+            console.log('[Algorithm] Phase 2: Constraint checking and refinement...');
+            let violatedCells = [];
+            let maxIterations = 50;
+            let iteration = 0;
+
+            do {
+                violatedCells = [];
+
+                // Check all grid cells within QR bounds
+                for (let row = -2; row < moduleCount + 2; row++) {
+                    for (let col = -2; col < moduleCount + 2; col++) {
+                        const constraint = checkGridConstraint(row, col);
+
+                        if (constraint.violated) {
+                            violatedCells.push({
+                                row,
+                                col,
+                                totalChange: constraint.totalChange,
+                                maxChange: constraint.maxChange,
+                                excess: constraint.totalChange - constraint.maxChange
+                            });
+                        }
+                    }
+                }
+
+                if (violatedCells.length > 0) {
+                    console.log(`[Algorithm] Iteration ${iteration}: ${violatedCells.length} violated cells`);
+
+                    // Sort by excess (most violated first)
+                    violatedCells.sort((a, b) => b.excess - a.excess);
+
+                    // Fix most violated cells
+                    for (let i = 0; i < Math.min(10, violatedCells.length); i++) {
+                        const cell = violatedCells[i];
+                        fixViolatedCell(cell.row, cell.col);
+                    }
+                }
+
+                iteration++;
+            } while (violatedCells.length > 0 && iteration < maxIterations);
+
+            const endTime = performance.now();
+            const elapsed = ((endTime - startTime) / 1000).toFixed(2);
+
+            algorithmStats = {
+                totalSectors: Object.keys(algorithmState).length,
+                violatedCells: violatedCells.length,
+                iterations: iteration,
+                converged: violatedCells.length === 0,
+                elapsedSeconds: elapsed
+            };
+
+            console.log('[Algorithm] Completed!', algorithmStats);
+            return algorithmStats;
+        }
+
+        // Fix a violated grid cell by flipping sectors with least impact
+        function fixViolatedCell(gridRow, gridCol) {
+            const isGridBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+            const overlappingSectors = findOverlappingSectors(gridRow, gridCol);
+
+            // Find sectors to flip
+            const candidates = [];
+            for (const sector of overlappingSectors) {
+                const sectorColor = algorithmState[sector.cellId];
+                if (sectorColor === undefined) continue;
+
+                // If grid is black and sector is white (contributing to violation), consider flipping to black
+                // If grid is white and sector is black (contributing to violation), consider flipping to white
+                if ((isGridBlack && !sectorColor) || (!isGridBlack && sectorColor)) {
+                    candidates.push({
+                        cellId: sector.cellId,
+                        overlapArea: sector.overlapArea
+                    });
+                }
+            }
+
+            // Flip the largest overlapping sector (most impact)
+            if (candidates.length > 0) {
+                candidates.sort((a, b) => b.overlapArea - a.overlapArea);
+                const toFlip = candidates[0];
+                algorithmState[toFlip.cellId] = !algorithmState[toFlip.cellId];
+            }
+        }
+
+        // Draw algorithm result
+        function drawAlgorithmResult() {
+            algorithmLayer.innerHTML = '';
+
+            if (Object.keys(algorithmState).length === 0) {
+                console.log('[drawAlgorithmResult] No algorithm state to draw');
+                return;
+            }
+
+            // Re-use global defs
+            let drawnCount = 0;
+
+            for (const [cellId, state] of Object.entries(algorithmState)) {
+                // Parse cell ID: cellId format might be "grid:*,*|radial:idx|ring:idx"
+                const match = cellId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
+
+                // Find a grid cell that overlaps with this sector for positioning
+                const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
+                if (overlappingGrids.length === 0) continue;
+
+                const gridRow = overlappingGrids[0].gridRow;
+                const gridCol = overlappingGrids[0].gridCol;
+
+                // Create cell with clipPath
+                const result = createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId);
+                if (!result) continue;
+
+                // Add clipPath to global defs
+                globalDefs.appendChild(result.clipPath);
+
+                // Use different colors for algorithm result (blue for black, cyan for white)
+                const fillColor = state ? '#2196F3' : '#00BCD4'; // Blue / Cyan
+                result.path.setAttribute('fill', fillColor);
+                result.path.setAttribute('stroke', 'none');
+                result.path.setAttribute('shape-rendering', 'crispEdges');
+
+                algorithmLayer.appendChild(result.path);
+                drawnCount++;
+            }
+
+            console.log('[drawAlgorithmResult] Drew', drawnCount, 'algorithm cells');
         }
 
         // Check if position is in Finder Pattern
@@ -910,8 +1274,9 @@
         drawModules();
         drawCells();
 
-        // 默认隐藏白色环线层
+        // 默认隐藏白色环线层和算法层
         whiteRingLayer.style.display = 'none';
+        algorithmLayer.style.display = 'none';
 
         // Toggle controls
         document.getElementById('show-grid').addEventListener('change', (e) => {
@@ -932,6 +1297,54 @@
 
         document.getElementById('show-white-rings').addEventListener('change', (e) => {
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        // Algorithm controls
+        document.getElementById('run-algorithm').addEventListener('click', async () => {
+            const button = document.getElementById('run-algorithm');
+            const statsDiv = document.getElementById('algorithm-stats');
+            const checkbox = document.getElementById('show-algorithm');
+
+            button.disabled = true;
+            button.textContent = '运行中... (Running...)';
+            statsDiv.style.display = 'none';
+
+            try {
+                const stats = await runConversionAlgorithm();
+                drawAlgorithmResult();
+
+                // Show stats
+                statsDiv.innerHTML = `
+                    <strong>算法统计：</strong><br>
+                    • 总扇形单元：${stats.totalSectors}<br>
+                    • 违反约束格子：${stats.violatedCells}<br>
+                    • 迭代次数：${stats.iterations}<br>
+                    • 是否收敛：${stats.converged ? '✓ 是' : '✗ 否'}<br>
+                    • 耗时：${stats.elapsedSeconds} 秒<br>
+                    <br>
+                    <strong>颜色说明：</strong><br>
+                    • 蓝色 (#2196F3)：算法计算的黑色区域<br>
+                    • 青色 (#00BCD4)：算法计算的白色区域<br>
+                    • 黑色/白色：人工标记或原始数据
+                `;
+                statsDiv.style.display = 'block';
+
+                // Auto enable display
+                checkbox.checked = true;
+                algorithmLayer.style.display = 'block';
+
+                alert('算法执行完成！\n请勾选"显示算法结果"查看对比。');
+            } catch (error) {
+                console.error('[Algorithm] Error:', error);
+                alert('算法执行失败：' + error.message);
+            } finally {
+                button.disabled = false;
+                button.textContent = '运行算法 (Run Algorithm)';
+            }
+        });
+
+        document.getElementById('show-algorithm').addEventListener('change', (e) => {
+            algorithmLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
