@@ -1194,10 +1194,10 @@
             console.log('[drawAlgorithmDisplay] Drew', drawnCount, 'algorithm sectors');
         }
 
-        // === Coverage detection functions ===
+        // === Coverage detection functions (OPTIMIZED) ===
 
-        // Check if a point (x, y) is covered by a specific sector
-        function isPointInSector(x, y, radialIndex, ringIndex) {
+        // Calculate which sector (radial, ring) a point belongs to - O(1)
+        function getSectorIndicesForPoint(x, y) {
             const dx = x - center.x;
             const dy = y - center.y;
             const r = Math.sqrt(dx * dx + dy * dy);
@@ -1206,56 +1206,31 @@
             let angle = Math.atan2(dy, dx) * 180 / Math.PI;
             if (angle < 0) angle += 360;
 
-            const r1 = ringIndex * RING_INTERVAL;
-            const r2 = (ringIndex + 1) * RING_INTERVAL;
-            const angle1 = radialIndex * 3;
-            const angle2 = (radialIndex + 1) * 3;
+            // Calculate sector indices directly
+            const radialIndex = Math.floor(angle / 3); // 3 degrees per sector
+            const ringIndex = Math.floor(r / RING_INTERVAL);
 
-            return r >= r1 && r < r2 && angle >= angle1 && angle < angle2;
+            return { radialIndex, ringIndex };
         }
 
-        // Check if a point is covered by current display layers
-        function isPointCovered(x, y, checkManual, checkAlgorithm) {
-            if (checkManual && manualDisplayLayer.style.display !== 'none') {
-                // Check manual sectors
-                for (const [sectorId, votes] of Object.entries(getSectorVotesFromCellState())) {
-                    const isBlack = votes.black > votes.white;
-                    if (!isBlack) continue;
+        // Check if a point is covered - O(1) with Set lookup
+        function isPointCovered(x, y, manualSectorsSet, algorithmSectorsSet) {
+            const { radialIndex, ringIndex } = getSectorIndicesForPoint(x, y);
+            const sectorId = `radial:${radialIndex}|ring:${ringIndex}`;
 
-                    const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
-                    if (!match) continue;
-
-                    const radialIndex = parseInt(match[1]);
-                    const ringIndex = parseInt(match[2]);
-
-                    if (isPointInSector(x, y, radialIndex, ringIndex)) {
-                        return true;
-                    }
-                }
+            // Fast Set lookup instead of array traversal
+            if (manualSectorsSet && manualSectorsSet.has(sectorId)) {
+                return true;
             }
-
-            if (checkAlgorithm && algorithmDisplayLayer.style.display !== 'none') {
-                // Check algorithm sectors
-                for (const [sectorId, color] of Object.entries(sectorColors)) {
-                    if (!color) continue; // Only black sectors
-
-                    const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
-                    if (!match) continue;
-
-                    const radialIndex = parseInt(match[1]);
-                    const ringIndex = parseInt(match[2]);
-
-                    if (isPointInSector(x, y, radialIndex, ringIndex)) {
-                        return true;
-                    }
-                }
+            if (algorithmSectorsSet && algorithmSectorsSet.has(sectorId)) {
+                return true;
             }
 
             return false;
         }
 
-        // Get sector votes from cellState (same logic as drawManualDisplay)
-        function getSectorVotesFromCellState() {
+        // Pre-compute manual sectors Set - called once
+        function getManualSectorsSet() {
             const sectorVotes = {};
             for (const [cellId, state] of Object.entries(cellState)) {
                 const match = cellId.match(/radial:(\d+)\|ring:(\d+)/);
@@ -1272,14 +1247,41 @@
                     sectorVotes[sectorId].white++;
                 }
             }
-            return sectorVotes;
+
+            // Build Set of black sectors for O(1) lookup
+            const blackSectors = new Set();
+            for (const [sectorId, votes] of Object.entries(sectorVotes)) {
+                if (votes.black > votes.white) {
+                    blackSectors.add(sectorId);
+                }
+            }
+            return blackSectors;
         }
 
-        // Detect coverage errors for all black modules
+        // Pre-compute algorithm sectors Set - called once
+        function getAlgorithmSectorsSet() {
+            const blackSectors = new Set();
+            for (const [sectorId, color] of Object.entries(sectorColors)) {
+                if (color) { // Only black sectors
+                    blackSectors.add(sectorId);
+                }
+            }
+            return blackSectors;
+        }
+
+        // Detect coverage errors - OPTIMIZED VERSION
         function detectCoverageErrors(checkManual = true, checkAlgorithm = true) {
-            console.log('[detectCoverageErrors] Starting detection...');
+            console.log('[detectCoverageErrors] Starting OPTIMIZED detection...');
+            const startTime = performance.now();
             const errors = [];
-            const sampleSize = 20; // 20×20 sampling for each module
+            const sampleSize = 10; // Reduced from 20 to 10 (100 samples instead of 400)
+
+            // MAJOR OPTIMIZATION: Pre-compute sector Sets once!
+            const manualSectorsSet = checkManual ? getManualSectorsSet() : null;
+            const algorithmSectorsSet = checkAlgorithm ? getAlgorithmSectorsSet() : null;
+
+            console.log(`[detectCoverageErrors] Pre-computed manual sectors: ${manualSectorsSet ? manualSectorsSet.size : 0}`);
+            console.log(`[detectCoverageErrors] Pre-computed algorithm sectors: ${algorithmSectorsSet ? algorithmSectorsSet.size : 0}`);
 
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
@@ -1289,13 +1291,14 @@
                     let coveredCount = 0;
                     const totalCount = sampleSize * sampleSize;
 
-                    // Sample points within the module rectangle [col, col+1] × [row, row+1]
+                    // Sample points within module rectangle [col, col+1] × [row, row+1]
                     for (let i = 0; i < sampleSize; i++) {
                         for (let j = 0; j < sampleSize; j++) {
                             const x = col + (i + 0.5) / sampleSize;
                             const y = row + (j + 0.5) / sampleSize;
 
-                            if (isPointCovered(x, y, checkManual, checkAlgorithm)) {
+                            // O(1) lookup instead of O(n) traversal!
+                            if (isPointCovered(x, y, manualSectorsSet, algorithmSectorsSet)) {
                                 coveredCount++;
                             }
                         }
@@ -1308,7 +1311,9 @@
                 }
             }
 
-            console.log(`[detectCoverageErrors] Found ${errors.length} errors`);
+            const endTime = performance.now();
+            const elapsed = ((endTime - startTime) / 1000).toFixed(2);
+            console.log(`[detectCoverageErrors] ✅ Found ${errors.length} errors in ${elapsed}s`);
             return errors;
         }
 
