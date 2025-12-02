@@ -785,39 +785,44 @@
         }
 
         // SIMPLIFIED ALGORITHM: Direct conversion based on area overlap
+        // Generate fine-grained cells for each (grid, radial, ring) combination
         async function runConversionAlgorithm() {
             console.log('[Algorithm] 🚀 Starting SIMPLIFIED conversion algorithm...');
             const startTime = performance.now();
 
             algorithmState = {};
-            const maxRadius = Math.sqrt(2) * moduleCount / 2;
-            const maxRing = Math.ceil(maxRadius / RING_INTERVAL);
-            const totalSectors = 120 * maxRing;
-
-            console.log('[Algorithm] Phase: Direct area-based assignment...');
-            let processedSectors = 0;
+            let processedCells = 0;
             let sameColorCount = 0;
             let differentColorCount = 0;
 
-            for (let ring = 0; ring <= maxRing; ring++) {
-                for (let radial = 0; radial < 120; radial++) {
-                    const color = calculateSectorColor_Simplified(radial, ring);
-                    const cellId = `grid:*,*|radial:${radial}|ring:${ring}`;
-                    algorithmState[cellId] = color;
-                    processedSectors++;
+            // Iterate through all grid cells (including margins)
+            console.log('[Algorithm] Phase: Generating fine-grained cells...');
+            for (let row = -2; row < moduleCount + 2; row++) {
+                for (let col = -2; col < moduleCount + 2; col++) {
+                    // Find all sectors overlapping this grid cell
+                    const overlappingSectors = findOverlappingSectors(row, col);
 
-                    // Track statistics
-                    const overlappingGrids = findOverlappingGridCells(radial, ring);
-                    const colors = new Set(overlappingGrids.map(g => baseModuleState[`${g.gridRow},${g.gridCol}`] || false));
-                    if (colors.size === 1) {
-                        sameColorCount++;
-                    } else {
-                        differentColorCount++;
-                    }
+                    for (const sector of overlappingSectors) {
+                        const { radialIndex, ringIndex, cellId } = sector;
 
-                    if (processedSectors % 200 === 0) {
-                        console.log(`[Algorithm] Processed ${processedSectors}/${totalSectors} sectors`);
+                        // Calculate color for this sector (same for all grids it spans)
+                        const color = calculateSectorColor_Simplified(radialIndex, ringIndex);
+                        algorithmState[cellId] = color;
+                        processedCells++;
+
+                        // Track statistics
+                        const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
+                        const colors = new Set(overlappingGrids.map(g => baseModuleState[`${g.gridRow},${g.gridCol}`] || false));
+                        if (colors.size === 1) {
+                            sameColorCount++;
+                        } else {
+                            differentColorCount++;
+                        }
                     }
+                }
+
+                if ((row + 2) % 5 === 0) {
+                    console.log(`[Algorithm] Processed row ${row}/${moduleCount + 2}`);
                 }
             }
 
@@ -825,7 +830,7 @@
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
 
             algorithmStats = {
-                totalSectors: Object.keys(algorithmState).length,
+                totalCells: Object.keys(algorithmState).length,
                 sameColorSectors: sameColorCount,
                 mixedColorSectors: differentColorCount,
                 elapsedSeconds: elapsed
@@ -1348,9 +1353,9 @@
                 // Show stats
                 let statsHTML = `
                     <strong>算法统计：</strong><br>
-                    • 总扇形单元：${stats.totalSectors}<br>
-                    • 单色扇形：${stats.sameColorSectors} (${((stats.sameColorSectors/stats.totalSectors)*100).toFixed(1)}%)<br>
-                    • 混色扇形：${stats.mixedColorSectors} (${((stats.mixedColorSectors/stats.totalSectors)*100).toFixed(1)}%)<br>
+                    • 总细粒度单元：${stats.totalCells}<br>
+                    • 单色扇形：${stats.sameColorSectors}<br>
+                    • 混色扇形：${stats.mixedColorSectors}<br>
                     • 耗时：${stats.elapsedSeconds} 秒<br>
                 `;
 
