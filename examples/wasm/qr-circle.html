@@ -215,15 +215,34 @@
                 <div id="qr-result" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 12px; display: none;"></div>
             </div>
 
+            <div class="section-title">图层控制（三原色）</div>
+            <div class="controls">
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="show-original" checked>
+                        <span style="color: #FF0000; font-weight: bold;">🔴 原始方形码点</span>
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="show-manual" checked>
+                        <span style="color: #0000FF; font-weight: bold;">🔵 人工扇环图像</span>
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="show-algorithm">
+                        <span style="color: #00FF00; font-weight: bold;">🟢 算法扇环图像</span>
+                    </label>
+                </div>
+            </div>
+
             <div class="section-title">自动环扇形转换算法</div>
             <div class="controls">
                 <div class="control-group">
                     <button id="run-algorithm" style="width: 100%; padding: 10px; cursor: pointer; background: #9C27B0; color: white; border: none; border-radius: 4px; font-size: 14px; margin-bottom: 10px;">
                         运行算法 (Run Algorithm)
                     </button>
-                </div>
-                <div class="control-group">
-                    <label><input type="checkbox" id="show-algorithm"> 显示算法结果（红色）</label>
                 </div>
                 <div class="control-group">
                     <button id="debug-sector" style="width: 100%; padding: 8px; cursor: pointer; background: #607D8B; color: white; border: none; border-radius: 4px; font-size: 12px;">
@@ -1012,7 +1031,7 @@
                 // Create complete sector path (no clipping)
                 const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
                 path.setAttribute('d', createCompleteSectorPath(radialIndex, ringIndex));
-                path.setAttribute('fill', '#FF0000'); // Red
+                path.setAttribute('fill', '#00FF00'); // Green (算法结果)
                 path.setAttribute('stroke', 'none');
                 path.setAttribute('shape-rendering', 'geometricPrecision');
 
@@ -1073,7 +1092,7 @@
             outerRing.setAttribute('cx', centerX);
             outerRing.setAttribute('cy', centerY);
             outerRing.setAttribute('r', 3.5);
-            outerRing.setAttribute('fill', '#FFC107'); // Yellow (原始QR)
+            outerRing.setAttribute('fill', '#FF0000'); // Red (原始QR)
             outerRing.setAttribute('mask', `url(#${maskId})`);
             moduleLayer.appendChild(outerRing);
 
@@ -1082,7 +1101,7 @@
             centerDot.setAttribute('cx', centerX);
             centerDot.setAttribute('cy', centerY);
             centerDot.setAttribute('r', 1.5);
-            centerDot.setAttribute('fill', '#FFC107'); // Yellow (原始QR)
+            centerDot.setAttribute('fill', '#FF0000'); // Red (原始QR)
             moduleLayer.appendChild(centerDot);
         }
 
@@ -1135,9 +1154,9 @@
                     rect.setAttribute('stroke', 'none');
                     rect.setAttribute('shape-rendering', 'crispEdges');
 
-                    // Fill based on base module state (use yellow for visibility)
+                    // Fill based on base module state (use red for visibility)
                     if (baseModuleState[`${row},${col}`]) {
-                        rect.setAttribute('fill', '#FFC107'); // Yellow (原始QR)
+                        rect.setAttribute('fill', '#FF0000'); // Red (原始QR)
                     } else {
                         rect.setAttribute('fill', 'white');
                     }
@@ -1174,8 +1193,8 @@
                 // Add clipPath to global defs
                 globalDefs.appendChild(result.clipPath);
 
-                // Set fill and style (use yellow for manual edits)
-                const fillColor = state ? '#FFC107' : 'white'; // Yellow for black, white for white
+                // Set fill and style (use blue for manual edits)
+                const fillColor = state ? '#0000FF' : 'white'; // Blue for black, white for white
                 result.path.setAttribute('fill', fillColor);
                 result.path.setAttribute('stroke', 'none');
                 result.path.setAttribute('shape-rendering', 'crispEdges');
@@ -1385,6 +1404,19 @@
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
+        // Layer controls (三原色图层控制)
+        document.getElementById('show-original').addEventListener('change', (e) => {
+            moduleLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-manual').addEventListener('change', (e) => {
+            cellLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-algorithm').addEventListener('change', (e) => {
+            algorithmLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
         // Algorithm controls
         document.getElementById('run-algorithm').addEventListener('click', async () => {
             const button = document.getElementById('run-algorithm');
@@ -1427,9 +1459,10 @@
 
                 statsHTML += `
                     <br>
-                    <strong>颜色说明：</strong><br>
-                    • 🔴 红色：算法黑色区域<br>
-                    • 🟡 黄色：人工标记/原始黑色<br>
+                    <strong>颜色说明（三原色）：</strong><br>
+                    • 🔴 红色：原始方形码点<br>
+                    • 🔵 蓝色：人工扇环图像<br>
+                    • 🟢 绿色：算法扇环图像<br>
                     • ⚪ 白色：留空（不显示）
                 `;
 
@@ -1440,7 +1473,7 @@
                 checkbox.checked = true;
                 algorithmLayer.style.display = 'block';
 
-                alert('算法执行完成！\n请勾选"显示算法结果"查看对比。');
+                alert('算法执行完成！\n请使用"图层控制"复选框自由组合查看对比：\n🔴 红色 - 原始方形码点\n🔵 蓝色 - 人工扇环图像\n🟢 绿色 - 算法扇环图像');
             } catch (error) {
                 console.error('[Algorithm] Error:', error);
                 alert('算法执行失败：' + error.message);
@@ -1448,10 +1481,6 @@
                 button.disabled = false;
                 button.textContent = '运行算法 (Run Algorithm)';
             }
-        });
-
-        document.getElementById('show-algorithm').addEventListener('change', (e) => {
-            algorithmLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         // Debug sector button
