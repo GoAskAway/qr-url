@@ -1035,21 +1035,21 @@
             defs.appendChild(mask);
             moduleLayer.appendChild(defs);
 
-            // Draw the outer ring
+            // Draw the outer ring (use yellow for visibility)
             const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             outerRing.setAttribute('cx', centerX);
             outerRing.setAttribute('cy', centerY);
             outerRing.setAttribute('r', 3.5);
-            outerRing.setAttribute('fill', '#000');
+            outerRing.setAttribute('fill', '#FFC107'); // Yellow (原始QR)
             outerRing.setAttribute('mask', `url(#${maskId})`);
             moduleLayer.appendChild(outerRing);
 
-            // Draw the center dot
+            // Draw the center dot (use yellow for visibility)
             const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             centerDot.setAttribute('cx', centerX);
             centerDot.setAttribute('cy', centerY);
             centerDot.setAttribute('r', 1.5);
-            centerDot.setAttribute('fill', '#000');
+            centerDot.setAttribute('fill', '#FFC107'); // Yellow (原始QR)
             moduleLayer.appendChild(centerDot);
         }
 
@@ -1102,9 +1102,9 @@
                     rect.setAttribute('stroke', 'none');
                     rect.setAttribute('shape-rendering', 'crispEdges');
 
-                    // Fill based on base module state
+                    // Fill based on base module state (use yellow for visibility)
                     if (baseModuleState[`${row},${col}`]) {
-                        rect.setAttribute('fill', '#000');
+                        rect.setAttribute('fill', '#FFC107'); // Yellow (原始QR)
                     } else {
                         rect.setAttribute('fill', 'white');
                     }
@@ -1141,8 +1141,8 @@
                 // Add clipPath to global defs
                 globalDefs.appendChild(result.clipPath);
 
-                // Set fill and style
-                const fillColor = state ? '#000' : 'white';
+                // Set fill and style (use yellow for manual edits)
+                const fillColor = state ? '#FFC107' : 'white'; // Yellow for black, white for white
                 result.path.setAttribute('fill', fillColor);
                 result.path.setAttribute('stroke', 'none');
                 result.path.setAttribute('shape-rendering', 'crispEdges');
@@ -1396,7 +1396,7 @@
                     <br>
                     <strong>颜色说明：</strong><br>
                     • 🔴 红色：算法黑色区域<br>
-                    • ⚫ 黑色：人工标记/原始黑色<br>
+                    • 🟡 黄色：人工标记/原始黑色<br>
                     • ⚪ 白色：留空（不显示）
                 `;
 
