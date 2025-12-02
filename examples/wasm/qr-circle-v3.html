@@ -355,11 +355,6 @@
         radialLayer.setAttribute('id', 'radial-layer');
         svg.appendChild(radialLayer);
 
-        // Cell layer for fine-grained cells (on top of everything)
-        const cellLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        cellLayer.setAttribute('id', 'cell-layer');
-        svg.appendChild(cellLayer);
-
         // White ring layer (white circles overlay, on top of everything)
         const whiteRingLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         whiteRingLayer.setAttribute('id', 'white-ring-layer');
@@ -794,57 +789,6 @@
             return algorithmStats;
         }
 
-        // Compare algorithm result with manual edits
-        function compareWithManualEdits() {
-            console.log('[Compare] 📊 Comparing algorithm vs manual edits...');
-
-            const manualCells = Object.keys(cellState);
-            const algorithmCells = Object.keys(algorithmState);
-
-            let totalCompared = 0;
-            let matchCount = 0;
-            let mismatchCount = 0;
-            const mismatches = [];
-
-            // Compare cells that exist in both
-            for (const cellId of algorithmCells) {
-                if (cellState.hasOwnProperty(cellId)) {
-                    totalCompared++;
-                    const manualColor = cellState[cellId];
-                    const algoColor = algorithmState[cellId];
-
-                    if (manualColor === algoColor) {
-                        matchCount++;
-                    } else {
-                        mismatchCount++;
-                        mismatches.push({
-                            cellId,
-                            manual: manualColor,
-                            algorithm: algoColor
-                        });
-                    }
-                }
-            }
-
-            const matchPercentage = totalCompared > 0 ? ((matchCount / totalCompared) * 100).toFixed(1) : 0;
-
-            console.log(`[Compare] Total compared: ${totalCompared}`);
-            console.log(`[Compare] Matches: ${matchCount} (${matchPercentage}%)`);
-            console.log(`[Compare] Mismatches: ${mismatchCount}`);
-
-            if (mismatches.length > 0 && mismatches.length <= 10) {
-                console.log('[Compare] Sample mismatches:', mismatches);
-            }
-
-            return {
-                totalCompared,
-                matchCount,
-                mismatchCount,
-                matchPercentage,
-                manualTotal: manualCells.length,
-                algorithmTotal: algorithmCells.length
-            };
-        }
 
         // Fix a violated grid cell by flipping sectors with least impact
         function fixViolatedCell(gridRow, gridCol) {
@@ -937,57 +881,6 @@
             }
         }
 
-        // Draw manual sectors (annular coordinate system, blue)
-        // Aggregate cellState by sector and draw complete sectors
-        function drawManualDisplay() {
-            manualDisplayLayer.innerHTML = '';
-
-            // Aggregate cellState by sector (radial, ring)
-            const sectorVotes = {}; // { "radial:idx|ring:idx": { black: count, white: count } }
-
-            for (const [cellId, state] of Object.entries(cellState)) {
-                // Parse cellId: "grid:row,col|radial:idx|ring:idx"
-                const match = cellId.match(/radial:(\d+)\|ring:(\d+)/);
-                if (!match) continue;
-
-                const sectorId = `radial:${match[1]}|ring:${match[2]}`;
-                if (!sectorVotes[sectorId]) {
-                    sectorVotes[sectorId] = { black: 0, white: 0 };
-                }
-
-                if (state) {
-                    sectorVotes[sectorId].black++;
-                } else {
-                    sectorVotes[sectorId].white++;
-                }
-            }
-
-            // Draw sectors based on majority vote
-            let drawnCount = 0;
-            for (const [sectorId, votes] of Object.entries(sectorVotes)) {
-                const isBlack = votes.black > votes.white;
-                if (!isBlack) continue; // Only draw black sectors
-
-                // Parse sector ID
-                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
-                if (!match) continue;
-
-                const radialIndex = parseInt(match[1]);
-                const ringIndex = parseInt(match[2]);
-
-                // Create complete sector path
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', createCompleteSectorPath(radialIndex, ringIndex));
-                path.setAttribute('fill', '#0000FF'); // Blue
-                path.setAttribute('stroke', 'none');
-                path.setAttribute('shape-rendering', 'geometricPrecision');
-
-                manualDisplayLayer.appendChild(path);
-                drawnCount++;
-            }
-
-            console.log('[drawManualDisplay] Drew', drawnCount, 'manual sectors');
-        }
 
         // Draw algorithm sectors (annular coordinate system, green)
         function drawAlgorithmDisplay() {
@@ -1044,14 +937,11 @@
         }
 
         // Check if a point is covered - O(1) with Set lookup
-        function isPointCovered(x, y, manualSectorsSet, algorithmSectorsSet) {
+        function isPointCovered(x, y, algorithmSectorsSet) {
             const { radialIndex, ringIndex } = getSectorIndicesForPoint(x, y);
             const sectorId = `radial:${radialIndex}|ring:${ringIndex}`;
 
             // Fast Set lookup instead of array traversal
-            if (manualSectorsSet && manualSectorsSet.has(sectorId)) {
-                return true;
-            }
             if (algorithmSectorsSet && algorithmSectorsSet.has(sectorId)) {
                 return true;
             }
@@ -1059,34 +949,6 @@
             return false;
         }
 
-        // Pre-compute manual sectors Set - called once
-        function getManualSectorsSet() {
-            const sectorVotes = {};
-            for (const [cellId, state] of Object.entries(cellState)) {
-                const match = cellId.match(/radial:(\d+)\|ring:(\d+)/);
-                if (!match) continue;
-
-                const sectorId = `radial:${match[1]}|ring:${match[2]}`;
-                if (!sectorVotes[sectorId]) {
-                    sectorVotes[sectorId] = { black: 0, white: 0 };
-                }
-
-                if (state) {
-                    sectorVotes[sectorId].black++;
-                } else {
-                    sectorVotes[sectorId].white++;
-                }
-            }
-
-            // Build Set of black sectors for O(1) lookup
-            const blackSectors = new Set();
-            for (const [sectorId, votes] of Object.entries(sectorVotes)) {
-                if (votes.black > votes.white) {
-                    blackSectors.add(sectorId);
-                }
-            }
-            return blackSectors;
-        }
 
         // Pre-compute algorithm sectors Set - called once
         function getAlgorithmSectorsSet() {
@@ -1100,17 +962,15 @@
         }
 
         // Detect coverage errors - OPTIMIZED VERSION
-        function detectCoverageErrors(checkManual = true, checkAlgorithm = true) {
+        function detectCoverageErrors(checkAlgorithm = true) {
             console.log('[detectCoverageErrors] Starting OPTIMIZED detection...');
             const startTime = performance.now();
             const errors = [];
             const sampleSize = 10; // Reduced from 20 to 10 (100 samples instead of 400)
 
             // MAJOR OPTIMIZATION: Pre-compute sector Sets once!
-            const manualSectorsSet = checkManual ? getManualSectorsSet() : null;
             const algorithmSectorsSet = checkAlgorithm ? getAlgorithmSectorsSet() : null;
 
-            console.log(`[detectCoverageErrors] Pre-computed manual sectors: ${manualSectorsSet ? manualSectorsSet.size : 0}`);
             console.log(`[detectCoverageErrors] Pre-computed algorithm sectors: ${algorithmSectorsSet ? algorithmSectorsSet.size : 0}`);
 
             for (let row = 0; row < moduleCount; row++) {
@@ -1128,7 +988,7 @@
                             const y = row + (j + 0.5) / sampleSize;
 
                             // O(1) lookup instead of O(n) traversal!
-                            if (isPointCovered(x, y, manualSectorsSet, algorithmSectorsSet)) {
+                            if (isPointCovered(x, y, algorithmSectorsSet)) {
                                 coveredCount++;
                             }
                         }
@@ -1307,45 +1167,6 @@
             }
         }
 
-        // Draw fine-grained cells (modified cells overlay)
-        function drawCells() {
-            console.log('[drawCells] Redrawing', Object.keys(cellState).length, 'cells');
-
-            // Clear cell layer and global defs
-            cellLayer.innerHTML = '';
-            globalDefs.innerHTML = '';
-
-            let drawnCount = 0;
-            // Draw each modified cell
-            for (const [cellId, state] of Object.entries(cellState)) {
-                // Parse cell ID: "grid:row,col|radial:idx|ring:idx"
-                const match = cellId.match(/grid:(\d+),(\d+)\|radial:(\d+)\|ring:(\d+)/);
-                if (!match) continue;
-
-                const gridRow = parseInt(match[1]);
-                const gridCol = parseInt(match[2]);
-                const radialIndex = parseInt(match[3]);
-                const ringIndex = parseInt(match[4]);
-
-                // Create cell with clipPath
-                const result = createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId);
-                if (!result) continue;
-
-                // Add clipPath to global defs
-                globalDefs.appendChild(result.clipPath);
-
-                // Set fill and style (use blue for manual edits)
-                const fillColor = state ? '#0000FF' : 'white'; // Blue for black, white for white
-                result.path.setAttribute('fill', fillColor);
-                result.path.setAttribute('stroke', 'none');
-                result.path.setAttribute('shape-rendering', 'crispEdges');
-
-                cellLayer.appendChild(result.path);
-                drawnCount++;
-            }
-            console.log('[drawCells] Actually drew', drawnCount, 'cells');
-            console.log('[drawCells] Global defs now has', globalDefs.children.length, 'clipPaths');
-        }
 
         // Create cell using clipPath for precise intersection
         function createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId) {
@@ -1518,11 +1339,9 @@
         drawRadialLines();
         drawWhiteRings();
         drawModules();
-        drawCells();
 
         // Draw new independent display layers
         drawOriginalDisplay();
-        drawManualDisplay();
         // drawAlgorithmDisplay() will be called after algorithm runs
 
         // 默认隐藏白色环线层和算法层
@@ -1531,7 +1350,6 @@
 
         // 隐藏旧的图层（现在使用新的独立显示图层）
         moduleLayer.style.display = 'none';
-        cellLayer.style.display = 'none';
 
         // 默认隐藏算法显示层和错误检测层
         algorithmDisplayLayer.style.display = 'none';
@@ -1561,10 +1379,6 @@
             originalDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
-        document.getElementById('show-manual').addEventListener('change', (e) => {
-            manualDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
-        });
-
         document.getElementById('show-algorithm').addEventListener('change', (e) => {
             algorithmDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
         });
@@ -1583,12 +1397,11 @@
             button.textContent = '检测中... (Detecting...)';
             statsDiv.style.display = 'none';
 
-            // Check which layers are currently displayed
-            const checkManual = manualDisplayLayer.style.display !== 'none';
+            // Check if algorithm layer is currently displayed
             const checkAlgorithm = algorithmDisplayLayer.style.display !== 'none';
 
-            if (!checkManual && !checkAlgorithm) {
-                alert('请先勾选至少一个扇环图层（人工或算法）！');
+            if (!checkAlgorithm) {
+                alert('请先勾选算法扇环图层！');
                 button.disabled = false;
                 button.textContent = '检测覆盖率 (Detect Coverage)';
                 return;
@@ -1597,7 +1410,7 @@
             // Run detection in next frame to allow UI update
             setTimeout(() => {
                 try {
-                    const errors = detectCoverageErrors(checkManual, checkAlgorithm);
+                    const errors = detectCoverageErrors(checkAlgorithm);
                     drawErrorMarkers(errors);
 
                     // Show stats
@@ -1650,12 +1463,6 @@
                 drawAlgorithmResult();
                 drawAlgorithmDisplay(); // Draw on new independent display layer
 
-                // Compare with manual edits if available
-                let compareStats = null;
-                if (Object.keys(cellState).length > 0) {
-                    compareStats = compareWithManualEdits();
-                }
-
                 // Show stats
                 let statsHTML = `
                     <strong>算法统计（纯扇环）：</strong><br>
@@ -1664,17 +1471,6 @@
                     • 混色扇环：${stats.mixedColorSectors}<br>
                     • 耗时：${stats.elapsedSeconds} 秒<br>
                 `;
-
-                if (compareStats) {
-                    statsHTML += `
-                        <br>
-                        <strong>📊 对比人工标记：</strong><br>
-                        • 人工标记单元：${compareStats.manualTotal}<br>
-                        • 对比单元数：${compareStats.totalCompared}<br>
-                        • 匹配：${compareStats.matchCount} (${compareStats.matchPercentage}%)<br>
-                        • 不匹配：${compareStats.mismatchCount}<br>
-                    `;
-                }
 
                 statsHTML += `
                     <br>
@@ -1719,16 +1515,6 @@
             // Call with debug flag
             const color = calculateSectorColor_Simplified(radial, ring, true);
 
-            // Find manual edits for this sector
-            const manualEdits = [];
-            for (const [cellId, state] of Object.entries(cellState)) {
-                if (cellId.includes(`radial:${radial}|ring:${ring}`)) {
-                    manualEdits.push({ cellId, state });
-                }
-            }
-
-            console.log('📝 人工标记:', manualEdits.length > 0 ? manualEdits : '无');
-
             // Check algorithm result
             const algoEdits = [];
             for (const [cellId, state] of Object.entries(algorithmState)) {
@@ -1740,7 +1526,7 @@
             console.log('🤖 算法结果:', algoEdits.length > 0 ? algoEdits : '无');
             console.log('========================================');
 
-            alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n人工标记: ${manualEdits.length} 个\n算法结果: ${algoEdits.length} 个`);
+            alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n算法结果: ${algoEdits.length} 个`);
         });
 
         // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
