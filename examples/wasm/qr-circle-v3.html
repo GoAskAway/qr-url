@@ -187,18 +187,36 @@
                 <div id="qr-result" style="margin-top: 10px; padding: 10px; background: #f0f0f0; border-radius: 4px; font-size: 12px; display: none;"></div>
             </div>
 
-            <div class="section-title">图层控制</div>
+            <div class="section-title">图层控制（自下而上）</div>
             <div class="controls">
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-original" checked>
-                        <span style="color: #FF0000; font-weight: bold;">🔴 原始方形码点</span>
+                        <input type="checkbox" id="show-layer-1-original" checked>
+                        <span style="color: #FF0000; font-weight: bold;">1️⃣ 原始 QR 层</span>
                     </label>
                 </div>
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-algorithm">
-                        <span style="color: #00FF00; font-weight: bold;">🟢 算法扇环图像</span>
+                        <input type="checkbox" id="show-layer-2-mask">
+                        <span style="color: #000000; font-weight: bold;">2️⃣ 功能性遮罩层</span>
+                    </label>
+                    <div style="margin-left: 24px; margin-top: 5px;">
+                        <input type="file" id="upload-mask" accept=".svg" style="font-size: 11px; width: 100%;">
+                        <button id="clear-mask" style="margin-top: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;">
+                            清除遮罩
+                        </button>
+                    </div>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="show-layer-3-algorithm">
+                        <span style="color: #00FF00; font-weight: bold;">3️⃣ 算法扇环层</span>
+                    </label>
+                </div>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="show-layer-4-decoration">
+                        <span style="color: #FFFFFF; font-weight: bold; text-shadow: 0 0 2px #000;">4️⃣ 修饰网格层</span>
                     </label>
                 </div>
             </div>
@@ -374,17 +392,23 @@
         algorithmLayer.setAttribute('opacity', '0.7'); // Semi-transparent for comparison
         svg.appendChild(algorithmLayer);
 
-        // === NEW: Three independent display layers (no clipping, pure coordinate systems) ===
-        // Original layer: rectangular coordinate system (red)
+        // === Four-layer design (bottom to top) ===
+        // Layer 1: Original QR layer (red)
         const originalDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        originalDisplayLayer.setAttribute('id', 'original-display-layer');
-        originalDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
+        originalDisplayLayer.setAttribute('id', 'layer-1-original');
+        originalDisplayLayer.setAttribute('opacity', '0.6');
         svg.appendChild(originalDisplayLayer);
 
-        // Algorithm display layer: annular coordinate system (green)
+        // Layer 2: Functional mask layer (black, from uploaded SVG)
+        const maskLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        maskLayer.setAttribute('id', 'layer-2-mask');
+        maskLayer.setAttribute('opacity', '0.8');
+        svg.appendChild(maskLayer);
+
+        // Layer 3: Algorithm annular layer (green)
         const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        algorithmDisplayLayer.setAttribute('id', 'algorithm-display-layer');
-        algorithmDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
+        algorithmDisplayLayer.setAttribute('id', 'layer-3-algorithm');
+        algorithmDisplayLayer.setAttribute('opacity', '0.6');
         svg.appendChild(algorithmDisplayLayer);
 
         // Error detection layer: highlight insufficient coverage (highest z-index)
@@ -1407,15 +1431,24 @@
         drawOriginalDisplay();
         // drawAlgorithmDisplay() will be called after algorithm runs
 
-        // 默认隐藏白色环线层和算法层
-        whiteRingLayer.style.display = 'none';
+        // 隐藏旧的调试图层
+        moduleLayer.style.display = 'none';
         algorithmLayer.style.display = 'none';
 
-        // 隐藏旧的图层（现在使用新的独立显示图层）
-        moduleLayer.style.display = 'none';
+        // 四层设计的初始显示状态
+        // Layer 1: Original QR - 默认显示 (checked)
+        originalDisplayLayer.style.display = 'block';
 
-        // 默认隐藏算法显示层和错误检测层
+        // Layer 2: Mask - 默认隐藏 (unchecked)
+        maskLayer.style.display = 'none';
+
+        // Layer 3: Algorithm - 默认隐藏 (unchecked)
         algorithmDisplayLayer.style.display = 'none';
+
+        // Layer 4: Decoration (white rings) - 默认隐藏 (unchecked)
+        whiteRingLayer.style.display = 'none';
+
+        // Error layer
         errorLayer.style.display = 'none';
 
         // Toggle controls
@@ -1438,12 +1471,21 @@
         });
 
         // Layer controls (三原色图层控制 - 控制新的独立显示图层)
-        document.getElementById('show-original').addEventListener('change', (e) => {
+        // Four-layer visibility controls
+        document.getElementById('show-layer-1-original').addEventListener('change', (e) => {
             originalDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
-        document.getElementById('show-algorithm').addEventListener('change', (e) => {
+        document.getElementById('show-layer-2-mask').addEventListener('change', (e) => {
+            maskLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-layer-3-algorithm').addEventListener('change', (e) => {
             algorithmDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
+        });
+
+        document.getElementById('show-layer-4-decoration').addEventListener('change', (e) => {
+            whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         // Coverage detection controls
@@ -1546,11 +1588,11 @@
                 statsDiv.innerHTML = statsHTML;
                 statsDiv.style.display = 'block';
 
-                // Auto enable display
-                checkbox.checked = true;
+                // Auto enable algorithm layer display
+                document.getElementById('show-layer-3-algorithm').checked = true;
                 algorithmDisplayLayer.style.display = 'block';
 
-                alert('算法执行完成！\n请使用"图层控制"复选框自由组合查看对比：\n🔴 红色 - 原始方形码点\n🔵 蓝色 - 人工扇环图像\n🟢 绿色 - 算法扇环图像');
+                alert('算法执行完成！\n请使用"图层控制"复选框查看不同图层：\n1️⃣ 原始 QR 层\n2️⃣ 功能性遮罩层\n3️⃣ 算法扇环层\n4️⃣ 修饰网格层');
             } catch (error) {
                 console.error('[Algorithm] Error:', error);
                 alert('算法执行失败：' + error.message);
@@ -1590,6 +1632,131 @@
 
             alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n算法结果: ${algoEdits.length} 个`);
         });
+
+        // ========== Functional Mask Layer Management ==========
+        const STORAGE_KEY_MASK = 'qr-circle-mask';
+        let maskData = null; // { circles: [], rects: [] }
+
+        // Load mask from localStorage
+        function loadMaskData() {
+            const saved = localStorage.getItem(STORAGE_KEY_MASK);
+            if (saved) {
+                try {
+                    maskData = JSON.parse(saved);
+                    renderMask();
+                    console.log('[Mask] Loaded from localStorage:', maskData);
+                } catch (e) {
+                    console.error('[Mask] Failed to load:', e);
+                }
+            }
+        }
+
+        // Save mask to localStorage
+        function saveMaskData() {
+            if (maskData) {
+                localStorage.setItem(STORAGE_KEY_MASK, JSON.stringify(maskData));
+                console.log('[Mask] Saved to localStorage');
+            }
+        }
+
+        // Render mask layer
+        function renderMask() {
+            maskLayer.innerHTML = '';
+            if (!maskData) return;
+
+            // Render circles
+            maskData.circles?.forEach(({ cx, cy, r }) => {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', cx);
+                circle.setAttribute('cy', cy);
+                circle.setAttribute('r', r);
+                circle.setAttribute('fill', '#000000');
+                circle.setAttribute('opacity', '1');
+                maskLayer.appendChild(circle);
+            });
+
+            // Render rectangles
+            maskData.rects?.forEach(({ x, y, w, h }) => {
+                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', x);
+                rect.setAttribute('y', y);
+                rect.setAttribute('width', w);
+                rect.setAttribute('height', h);
+                rect.setAttribute('fill', '#000000');
+                rect.setAttribute('opacity', '1');
+                maskLayer.appendChild(rect);
+            });
+
+            console.log(`[Mask] Rendered ${maskData.circles?.length || 0} circles and ${maskData.rects?.length || 0} rects`);
+        }
+
+        // Parse SVG mask file
+        function parseSVGMask(svgText) {
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
+            const circles = [];
+            const rects = [];
+
+            // Extract circles
+            svgDoc.querySelectorAll('circle').forEach(circle => {
+                const cx = parseFloat(circle.getAttribute('cx') || 0);
+                const cy = parseFloat(circle.getAttribute('cy') || 0);
+                const r = parseFloat(circle.getAttribute('r') || 0);
+                circles.push({ cx, cy, r });
+            });
+
+            // Extract rectangles
+            svgDoc.querySelectorAll('rect').forEach(rect => {
+                const x = parseFloat(rect.getAttribute('x') || 0);
+                const y = parseFloat(rect.getAttribute('y') || 0);
+                const w = parseFloat(rect.getAttribute('width') || 1);
+                const h = parseFloat(rect.getAttribute('height') || 1);
+                rects.push({ x, y, w, h });
+            });
+
+            return { circles, rects };
+        }
+
+        // Upload mask file
+        document.getElementById('upload-mask').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                try {
+                    const svgText = evt.target.result;
+                    maskData = parseSVGMask(svgText);
+                    saveMaskData();
+                    renderMask();
+
+                    // Auto enable mask layer
+                    document.getElementById('show-layer-2-mask').checked = true;
+                    maskLayer.style.display = 'block';
+
+                    alert(`遮罩已上传！\n圆形: ${maskData.circles.length} 个\n矩形: ${maskData.rects.length} 个`);
+                } catch (error) {
+                    console.error('[Mask] Upload error:', error);
+                    alert('上传失败：' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Clear mask
+        document.getElementById('clear-mask').addEventListener('click', () => {
+            if (confirm('确定要清除遮罩吗？')) {
+                maskData = null;
+                maskLayer.innerHTML = '';
+                localStorage.removeItem(STORAGE_KEY_MASK);
+                document.getElementById('upload-mask').value = '';
+                console.log('[Mask] Cleared');
+                alert('遮罩已清除');
+            }
+        });
+
+        // Load mask on init
+        loadMaskData();
 
         // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
     </script>
