@@ -717,33 +717,39 @@
             return overlaps;
         }
 
-        // Calculate cost for assigning black/white to a sector
-        function calculateSectorCost(radialIndex, ringIndex) {
+        // SIMPLIFIED ALGORITHM: Calculate sector color based on maximum overlap area
+        function calculateSectorColor_Simplified(radialIndex, ringIndex) {
+            // Find all grid cells that overlap with this sector
             const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
 
-            let costIfBlack = 0;
-            let costIfWhite = 0;
+            if (overlappingGrids.length === 0) {
+                return false; // Default to white if no overlap
+            }
+
+            // Collect colors and areas
+            const gridColors = new Set();
+            const colorAreas = { black: 0, white: 0 };
 
             for (const overlap of overlappingGrids) {
                 const { gridRow, gridCol, overlapArea } = overlap;
-                const isGridBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+                const isBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
 
-                if (isGridBlack) {
-                    // Grid is black: prefer black sector (no cost), white sector costs (subtraction)
-                    costIfBlack += 0;
-                    costIfWhite += overlapArea;
+                gridColors.add(isBlack);
+
+                if (isBlack) {
+                    colorAreas.black += overlapArea;
                 } else {
-                    // Grid is white: prefer white sector (no cost), black sector costs (addition)
-                    costIfBlack += overlapArea;
-                    costIfWhite += 0;
+                    colorAreas.white += overlapArea;
                 }
             }
 
-            return {
-                costIfBlack,
-                costIfWhite,
-                bestColor: costIfBlack <= costIfWhite
-            };
+            // Case 1 & 2: All grids have the same color (fully inside one grid or spanning same-color grids)
+            if (gridColors.size === 1) {
+                return Array.from(gridColors)[0];
+            }
+
+            // Case 3: Spanning different colors -> choose the color with larger area
+            return colorAreas.black > colorAreas.white;
         }
 
         // Check if a grid cell violates the 25% constraint
@@ -778,9 +784,9 @@
             };
         }
 
-        // Main algorithm: Convert rectangular QR to circular sector-ring pattern
+        // SIMPLIFIED ALGORITHM: Direct conversion based on area overlap
         async function runConversionAlgorithm() {
-            console.log('[Algorithm] Starting automatic conversion...');
+            console.log('[Algorithm] 🚀 Starting SIMPLIFIED conversion algorithm...');
             const startTime = performance.now();
 
             algorithmState = {};
@@ -788,77 +794,97 @@
             const maxRing = Math.ceil(maxRadius / RING_INTERVAL);
             const totalSectors = 120 * maxRing;
 
-            // Phase 1: Initial greedy assignment
-            console.log('[Algorithm] Phase 1: Greedy assignment...');
+            console.log('[Algorithm] Phase: Direct area-based assignment...');
             let processedSectors = 0;
+            let sameColorCount = 0;
+            let differentColorCount = 0;
+
             for (let ring = 0; ring <= maxRing; ring++) {
                 for (let radial = 0; radial < 120; radial++) {
-                    const cost = calculateSectorCost(radial, ring);
+                    const color = calculateSectorColor_Simplified(radial, ring);
                     const cellId = `grid:*,*|radial:${radial}|ring:${ring}`;
-                    algorithmState[cellId] = cost.bestColor;
+                    algorithmState[cellId] = color;
                     processedSectors++;
 
-                    if (processedSectors % 100 === 0) {
+                    // Track statistics
+                    const overlappingGrids = findOverlappingGridCells(radial, ring);
+                    const colors = new Set(overlappingGrids.map(g => baseModuleState[`${g.gridRow},${g.gridCol}`] || false));
+                    if (colors.size === 1) {
+                        sameColorCount++;
+                    } else {
+                        differentColorCount++;
+                    }
+
+                    if (processedSectors % 200 === 0) {
                         console.log(`[Algorithm] Processed ${processedSectors}/${totalSectors} sectors`);
                     }
                 }
             }
-
-            // Phase 2: Check constraints and iterative refinement
-            console.log('[Algorithm] Phase 2: Constraint checking and refinement...');
-            let violatedCells = [];
-            let maxIterations = 50;
-            let iteration = 0;
-
-            do {
-                violatedCells = [];
-
-                // Check all grid cells within QR bounds
-                for (let row = -2; row < moduleCount + 2; row++) {
-                    for (let col = -2; col < moduleCount + 2; col++) {
-                        const constraint = checkGridConstraint(row, col);
-
-                        if (constraint.violated) {
-                            violatedCells.push({
-                                row,
-                                col,
-                                totalChange: constraint.totalChange,
-                                maxChange: constraint.maxChange,
-                                excess: constraint.totalChange - constraint.maxChange
-                            });
-                        }
-                    }
-                }
-
-                if (violatedCells.length > 0) {
-                    console.log(`[Algorithm] Iteration ${iteration}: ${violatedCells.length} violated cells`);
-
-                    // Sort by excess (most violated first)
-                    violatedCells.sort((a, b) => b.excess - a.excess);
-
-                    // Fix most violated cells
-                    for (let i = 0; i < Math.min(10, violatedCells.length); i++) {
-                        const cell = violatedCells[i];
-                        fixViolatedCell(cell.row, cell.col);
-                    }
-                }
-
-                iteration++;
-            } while (violatedCells.length > 0 && iteration < maxIterations);
 
             const endTime = performance.now();
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
 
             algorithmStats = {
                 totalSectors: Object.keys(algorithmState).length,
-                violatedCells: violatedCells.length,
-                iterations: iteration,
-                converged: violatedCells.length === 0,
+                sameColorSectors: sameColorCount,
+                mixedColorSectors: differentColorCount,
                 elapsedSeconds: elapsed
             };
 
-            console.log('[Algorithm] Completed!', algorithmStats);
+            console.log('[Algorithm] ✅ Completed!', algorithmStats);
             return algorithmStats;
+        }
+
+        // Compare algorithm result with manual edits
+        function compareWithManualEdits() {
+            console.log('[Compare] 📊 Comparing algorithm vs manual edits...');
+
+            const manualCells = Object.keys(cellState);
+            const algorithmCells = Object.keys(algorithmState);
+
+            let totalCompared = 0;
+            let matchCount = 0;
+            let mismatchCount = 0;
+            const mismatches = [];
+
+            // Compare cells that exist in both
+            for (const cellId of algorithmCells) {
+                if (cellState.hasOwnProperty(cellId)) {
+                    totalCompared++;
+                    const manualColor = cellState[cellId];
+                    const algoColor = algorithmState[cellId];
+
+                    if (manualColor === algoColor) {
+                        matchCount++;
+                    } else {
+                        mismatchCount++;
+                        mismatches.push({
+                            cellId,
+                            manual: manualColor,
+                            algorithm: algoColor
+                        });
+                    }
+                }
+            }
+
+            const matchPercentage = totalCompared > 0 ? ((matchCount / totalCompared) * 100).toFixed(1) : 0;
+
+            console.log(`[Compare] Total compared: ${totalCompared}`);
+            console.log(`[Compare] Matches: ${matchCount} (${matchPercentage}%)`);
+            console.log(`[Compare] Mismatches: ${mismatchCount}`);
+
+            if (mismatches.length > 0 && mismatches.length <= 10) {
+                console.log('[Compare] Sample mismatches:', mismatches);
+            }
+
+            return {
+                totalCompared,
+                matchCount,
+                mismatchCount,
+                matchPercentage,
+                manualTotal: manualCells.length,
+                algorithmTotal: algorithmCells.length
+            };
         }
 
         // Fix a violated grid cell by flipping sectors with least impact
@@ -1313,20 +1339,41 @@
                 const stats = await runConversionAlgorithm();
                 drawAlgorithmResult();
 
+                // Compare with manual edits if available
+                let compareStats = null;
+                if (Object.keys(cellState).length > 0) {
+                    compareStats = compareWithManualEdits();
+                }
+
                 // Show stats
-                statsDiv.innerHTML = `
+                let statsHTML = `
                     <strong>算法统计：</strong><br>
                     • 总扇形单元：${stats.totalSectors}<br>
-                    • 违反约束格子：${stats.violatedCells}<br>
-                    • 迭代次数：${stats.iterations}<br>
-                    • 是否收敛：${stats.converged ? '✓ 是' : '✗ 否'}<br>
+                    • 单色扇形：${stats.sameColorSectors} (${((stats.sameColorSectors/stats.totalSectors)*100).toFixed(1)}%)<br>
+                    • 混色扇形：${stats.mixedColorSectors} (${((stats.mixedColorSectors/stats.totalSectors)*100).toFixed(1)}%)<br>
                     • 耗时：${stats.elapsedSeconds} 秒<br>
+                `;
+
+                if (compareStats) {
+                    statsHTML += `
+                        <br>
+                        <strong>📊 对比人工标记：</strong><br>
+                        • 人工标记单元：${compareStats.manualTotal}<br>
+                        • 对比单元数：${compareStats.totalCompared}<br>
+                        • 匹配：${compareStats.matchCount} (${compareStats.matchPercentage}%)<br>
+                        • 不匹配：${compareStats.mismatchCount}<br>
+                    `;
+                }
+
+                statsHTML += `
                     <br>
                     <strong>颜色说明：</strong><br>
-                    • 蓝色 (#2196F3)：算法计算的黑色区域<br>
-                    • 青色 (#00BCD4)：算法计算的白色区域<br>
-                    • 黑色/白色：人工标记或原始数据
+                    • 🔵 蓝色：算法黑色区域<br>
+                    • 🩵 青色：算法白色区域<br>
+                    • ⚫ 黑色/白色：人工标记/原始
                 `;
+
+                statsDiv.innerHTML = statsHTML;
                 statsDiv.style.display = 'block';
 
                 // Auto enable display
