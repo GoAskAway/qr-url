@@ -659,15 +659,15 @@
                 <h3>Center Circle Mask</h3>
                 <div class="mask-toggle">
                     <label>
-                        <input type="checkbox" id="toggle-mask">
+                        <input type="checkbox" id="toggle-mask" checked>
                         <span>Enable Mask</span>
                     </label>
                 </div>
                 <div class="mask-slider">
                     <label>
-                        Radius: <span class="slider-value" id="radius-value">0.0</span> modules
+                        Radius: <span class="slider-value" id="radius-value">4.5</span> modules
                     </label>
-                    <input type="range" id="radius-slider" min="0" max="15" value="0" step="0.1">
+                    <input type="range" id="radius-slider" min="0" max="15" value="4.5" step="0.1">
                 </div>
                 <div class="mask-info">
                     Center: <span id="center-pos">(14, 14)</span><br>
@@ -679,18 +679,18 @@
                 <h3>Corner Circle Mask (Draggable)</h3>
                 <div class="mask-toggle">
                     <label>
-                        <input type="checkbox" id="toggle-mask-2">
+                        <input type="checkbox" id="toggle-mask-2" checked>
                         <span>Enable Mask</span>
                     </label>
                 </div>
                 <div class="mask-slider">
                     <label>
-                        Radius: <span class="slider-value" id="radius-value-2">0.0</span> modules
+                        Radius: <span class="slider-value" id="radius-value-2">1.25</span> modules
                     </label>
-                    <input type="range" id="radius-slider-2" min="0" max="15" value="2.0" step="0.1">
+                    <input type="range" id="radius-slider-2" min="0" max="15" value="1.25" step="0.1">
                 </div>
                 <div class="mask-info">
-                    Center: <span id="circle2-pos">(14, 14)</span><br>
+                    Center: <span id="circle2-pos">(27.5, 27.5)</span><br>
                     Drag to move<br>
                     Masked: <span id="masked-count-2">0</span> codewords
                 </div>
@@ -1020,9 +1020,9 @@
         const circle2PosSpan = document.getElementById('circle2-pos');
         let mask2 = document.getElementById('circular-mask-2');
         
-        // Initial center of second circle (near bottom-right corner of current QR)
-        let circle2CenterX = gridPadding + (currentSize - 1.5) * unitSize;
-        let circle2CenterY = gridPadding + (currentSize - 1.5) * unitSize;
+        // Initial center of second circle at (27.5, 27.5) in module coordinates
+        let circle2CenterX = gridPadding + 27.5 * unitSize;
+        let circle2CenterY = gridPadding + 27.5 * unitSize;
         
 
         // Update mask state
