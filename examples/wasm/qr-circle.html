@@ -1305,7 +1305,7 @@
                     }
 
                     const coverage = coveredCount / totalCount;
-                    if (coverage < 0.9) { // Coverage < 90% (error > 10%)
+                    if (coverage < 0.75) { // Coverage < 75% (error > 25%)
                         errors.push({ row, col, coverage });
                     }
                 }
@@ -1777,7 +1777,7 @@
                     let statsHTML = `
                         <strong>检测结果：</strong><br>
                         • 总黑色码点：${totalBlackModules}<br>
-                        • 覆盖不足（<90%）：${errors.length}<br>
+                        • 覆盖不足（<75%）：${errors.length}<br>
                         • 错误率：${errorRate}%<br>
                         <br>
                         <strong>检测范围：</strong><br>
@@ -1794,7 +1794,7 @@
                         errorLayer.style.display = 'block';
                     }
 
-                    alert(`检测完成！\n发现 ${errors.length} 个覆盖不足的码点（<90%）\n错误率：${errorRate}%`);
+                    alert(`检测完成！\n发现 ${errors.length} 个覆盖不足的码点（<75%）\n错误率：${errorRate}%`);
                 } catch (error) {
                     console.error('[Detection] Error:', error);
                     alert('检测失败：' + error.message);
