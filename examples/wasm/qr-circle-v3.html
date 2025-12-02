@@ -1868,7 +1868,7 @@
             const checkAlgorithm = algorithmDisplayLayer.style.display !== 'none';
 
             if (!checkAlgorithm) {
-                alert('请先勾选算法扇环图层！');
+                console.log('[Detection] 请先勾选算法扇环图层！');
                 button.disabled = false;
                 button.textContent = '检测覆盖率 (Detect Coverage)';
                 return;
@@ -1903,10 +1903,10 @@
                         errorLayer.style.display = 'block';
                     }
 
-                    alert(`检测完成！\n发现 ${errors.length} 个覆盖不足的码点（<75%）\n错误率：${errorRate}%`);
+                    console.log(`[Detection] 检测完成！发现 ${errors.length} 个覆盖不足的码点（<75%），错误率：${errorRate}%`);
                 } catch (error) {
                     console.error('[Detection] Error:', error);
-                    alert('检测失败：' + error.message);
+                    console.log('[Detection] 检测失败：' + error.message);
                 } finally {
                     button.disabled = false;
                     button.textContent = '检测覆盖率 (Detect Coverage)';
@@ -2007,7 +2007,7 @@
                     statusText.style.color = '#f44336';
                     button.disabled = false;
                     button.textContent = '测试识别 (Test QR)';
-                    alert('图像加载失败');
+                    console.log('[QR Test] 图像加载失败');
                 };
 
                 img.src = url;
@@ -2019,7 +2019,7 @@
                 statusText.style.color = '#f44336';
                 button.disabled = false;
                 button.textContent = '测试识别 (Test QR)';
-                alert('测试失败：' + error.message);
+                console.log('[QR Test] 测试失败：' + error.message);
             }
         });
 
@@ -2063,10 +2063,10 @@
                 document.getElementById('show-layer-3-algorithm').checked = true;
                 algorithmDisplayLayer.style.display = 'block';
 
-                alert('算法执行完成！\n请使用"图层控制"复选框查看不同图层：\n1️⃣ 原始 QR 层\n2️⃣ 功能性遮罩层\n3️⃣ 算法扇环层\n4️⃣ 修饰网格层');
+                console.log('[Algorithm] 算法执行完成！请使用"图层控制"复选框查看不同图层：1️⃣ 原始 QR 层 / 2️⃣ 功能性遮罩层 / 3️⃣ 算法扇环层 / 4️⃣ 修饰网格层');
             } catch (error) {
                 console.error('[Algorithm] Error:', error);
-                alert('算法执行失败：' + error.message);
+                console.log('[Algorithm] 算法执行失败：' + error.message);
             } finally {
                 button.disabled = false;
                 button.textContent = '运行算法 (Run Algorithm)';
@@ -2079,7 +2079,7 @@
             const ring = parseInt(prompt('输入 ring index (0-30):', '5'));
 
             if (isNaN(radial) || isNaN(ring)) {
-                alert('无效的输入');
+                console.log('[Debug] 无效的输入');
                 return;
             }
 
@@ -2101,7 +2101,7 @@
             console.log('🤖 算法结果:', algoEdits.length > 0 ? algoEdits : '无');
             console.log('========================================');
 
-            alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n算法结果: ${algoEdits.length} 个`);
+            console.log(`[Debug] 调试完成！扇环颜色: ${color ? '黑色' : '白色'}, 算法结果: ${algoEdits.length} 个`);
         });
 
         // ========== Functional Mask Layer Management ==========
@@ -2209,10 +2209,10 @@
                     document.getElementById('show-layer-2-mask').checked = true;
                     maskLayer.style.display = 'block';
 
-                    alert(`遮罩已上传！\n圆形: ${maskData.circles.length} 个\n矩形: ${maskData.rects.length} 个`);
+                    console.log(`[Mask] 遮罩已上传！圆形: ${maskData.circles.length} 个, 矩形: ${maskData.rects.length} 个`);
                 } catch (error) {
                     console.error('[Mask] Upload error:', error);
-                    alert('上传失败：' + error.message);
+                    console.log('[Mask] 上传失败：' + error.message);
                 }
             };
             reader.readAsText(file);
@@ -2225,8 +2225,7 @@
                 maskLayer.innerHTML = '';
                 localStorage.removeItem(STORAGE_KEY_MASK);
                 document.getElementById('upload-mask').value = '';
-                console.log('[Mask] Cleared');
-                alert('遮罩已清除');
+                console.log('[Mask] 遮罩已清除');
             }
         });
 
