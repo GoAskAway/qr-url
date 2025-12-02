@@ -725,22 +725,26 @@
             return false;
         }
 
-        // Helper: Check if a module is an edge module (close to QR boundary)
-        // Edge modules are within 2 units from any boundary
+        // Helper: Check if a module is an edge module (close to QR rectangular boundary)
+        // Uses Cartesian coordinates (row, col), not polar coordinates
+        // For QR v3 (29×29): edge modules are in rows/cols [0-2] or [26-28]
+        // Example: (0,0), (1,5), (28,28), (15,0) are edge modules
+        //          (3,3), (14,14), (25,25) are inner modules
         function isEdgeModule(row, col) {
-            const edgeThreshold = 2;
+            const edgeThreshold = 3; // Distance from rectangular boundary
             return row < edgeThreshold || row >= moduleCount - edgeThreshold ||
                    col < edgeThreshold || col >= moduleCount - edgeThreshold;
         }
 
-        // Helper: Check if a sector is an edge sector (partially inside and partially outside QR boundary)
+        // Helper: Check if a sector is an edge sector (partially inside and partially outside QR rectangular boundary)
+        // A sector is "edge" if some vertices are inside [0, moduleCount] and some are outside
         function isEdgeSector(radialIndex, ringIndex) {
             const angle1 = radialIndex * 3 * Math.PI / 180;
             const angle2 = (radialIndex + 1) * 3 * Math.PI / 180;
             const r1 = ringIndex * RING_INTERVAL;
             const r2 = (ringIndex + 1) * RING_INTERVAL;
 
-            // Calculate four vertices of the sector
+            // Calculate four vertices of the sector (in Cartesian coordinates)
             const vertices = [
                 { x: center.x + r1 * Math.cos(angle1), y: center.y + r1 * Math.sin(angle1) }, // Inner, angle1
                 { x: center.x + r1 * Math.cos(angle2), y: center.y + r1 * Math.sin(angle2) }, // Inner, angle2
@@ -754,7 +758,7 @@
             let hasInside = false;
             let hasOutside = false;
 
-            // Check each vertex
+            // Check each vertex against rectangular boundary
             for (const vertex of vertices) {
                 const isInside = vertex.x >= qrMin && vertex.x <= qrMax &&
                                  vertex.y >= qrMin && vertex.y <= qrMax;
@@ -820,7 +824,8 @@
                 }
 
                 // Check if this module is an inner (non-edge) module
-                if (!isEdgeModule(gridRow, gridCol)) {
+                const isEdge = isEdgeModule(gridRow, gridCol);
+                if (!isEdge) {
                     hasInnerModule = true;
                 }
 
@@ -841,7 +846,8 @@
                     gridDetails.push({
                         grid: `${gridRow},${gridCol}`,
                         color: isMasked ? 'white (masked)' : (isBlack ? 'black' : 'white'),
-                        area: overlapArea.toFixed(4)
+                        area: overlapArea.toFixed(4),
+                        isEdgeModule: isEdge
                     });
                 }
             }
@@ -854,13 +860,24 @@
                 return false;
             }
 
-            // SPECIAL CASE: Edge sectors (partially outside QR boundary) - always add material
+            // SPECIAL CASE: Edge sectors (partially outside QR rectangular boundary) - additive approach
             // CONDITION: Only apply if sector ONLY touches edge modules (not inner modules)
-            // If it's an edge sector, has black module, and doesn't touch inner modules, return black
+            // Rule: If crossing boundary + has black + no inner modules → always BLACK (extends beyond boundary)
             const isEdge = isEdgeSector(radialIndex, ringIndex);
-            if (isEdge && hasBlackModule && !hasInnerModule) {
+            const applyEdgeRule = isEdge && hasBlackModule && !hasInnerModule;
+
+            if (debug) {
+                console.log(`[Sector ${radialIndex},${ringIndex}] Edge Rule Check:`, {
+                    isEdgeSector: isEdge,
+                    hasBlackModule: hasBlackModule,
+                    hasInnerModule: hasInnerModule,
+                    applyEdgeRule: applyEdgeRule
+                });
+            }
+
+            if (applyEdgeRule) {
                 if (debug) {
-                    console.log(`[Sector ${radialIndex},${ringIndex}] EDGE SECTOR (edge-only) - Additive approach: BLACK (extends beyond boundary)`);
+                    console.log(`[Sector ${radialIndex},${ringIndex}] ✅ EDGE RULE APPLIED - Additive: BLACK (extends beyond boundary)`);
                 }
                 return true;
             }
@@ -871,7 +888,7 @@
                 : colorAreas.black > colorAreas.white;
 
             if (debug) {
-                console.log(`[Sector ${radialIndex},${ringIndex}]`, {
+                console.log(`[Sector ${radialIndex},${ringIndex}] Standard Rule:`, {
                     isEdgeSector: isEdge,
                     overlappingGrids: gridDetails,
                     skippedGrids: skippedCount,
