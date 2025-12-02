@@ -297,9 +297,7 @@
 
         // Fine-grained cell state management (grid + radials + rings)
         const STORAGE_KEY_BASE = 'qr-circle-base';
-        const STORAGE_KEY_CELLS = 'qr-circle-cells';
         let baseModuleState = {}; // { "row,col": true/false } - base QR pattern
-        let cellState = {}; // { "grid:row,col|radial:idx|ring:idx": true/false } - fine-grained cells (manual edits)
 
         // Algorithm state (automatic conversion result)
         // Store sector colors directly, without grid subdivision
@@ -307,149 +305,12 @@
         let algorithmState = {}; // Legacy: for comparison with manual edits
         let algorithmStats = null; // Algorithm execution statistics
 
-        // Undo/Redo history stacks
-        let undoStack = []; // Stack of operations for undo
-        let redoStack = []; // Stack of operations for redo
-        const MAX_HISTORY = 100; // Maximum history size
-
         const RADIAL_COUNT = 120; // 120 radial lines (every 3°)
         const RING_INTERVAL = 0.5; // Ring every 0.5 units
         const maxRadius = Math.sqrt(2) * moduleCount / 2;
         const RING_COUNT = Math.ceil(maxRadius / RING_INTERVAL);
 
-        // Calculate which cell a point belongs to
-        function getCellAtPoint(x, y) {
-            const gridRow = Math.floor(y);
-            const gridCol = Math.floor(x);
-
-            // Calculate radial index (angle)
-            const dx = x - center.x;
-            const dy = y - center.y;
-            let angle = Math.atan2(dy, dx) * 180 / Math.PI; // -180 to 180
-            if (angle < 0) angle += 360; // 0 to 360
-            const radialIndex = Math.floor(angle / 3); // 0-119
-
-            // Calculate ring index (radius)
-            const radius = Math.sqrt(dx * dx + dy * dy);
-            const ringIndex = Math.floor(radius / RING_INTERVAL);
-
-            return {
-                gridRow,
-                gridCol,
-                radialIndex,
-                ringIndex,
-                id: `grid:${gridRow},${gridCol}|radial:${radialIndex}|ring:${ringIndex}`
-            };
-        }
-
-        // Get cell state (check cell state first, then fall back to base module)
-        function getCellState(cellId, gridRow, gridCol) {
-            if (cellState.hasOwnProperty(cellId)) {
-                return cellState[cellId];
-            }
-            // Fall back to base module state
-            return baseModuleState[`${gridRow},${gridCol}`] || false;
-        }
-
-        // Toggle cell state
-        function toggleCell(cellInfo) {
-            const currentState = getCellState(cellInfo.id, cellInfo.gridRow, cellInfo.gridCol);
-            const newState = !currentState;
-
-            // Record operation for undo (记录是否在 cellState 中存在)
-            undoStack.push({
-                cellInfo: cellInfo,
-                previousState: currentState,
-                newState: newState,
-                hadCellState: cellState.hasOwnProperty(cellInfo.id) // 记录之前是否在 cellState 中
-            });
-
-            // Limit history size
-            if (undoStack.length > MAX_HISTORY) {
-                undoStack.shift();
-            }
-
-            // Clear redo stack when new operation is performed
-            redoStack = [];
-
-            // Apply change
-            cellState[cellInfo.id] = newState;
-            saveCellState();
-            drawCells();
-            drawManualDisplay(); // Update manual sector display
-        }
-
-        // Undo last operation
-        function undo() {
-            if (undoStack.length === 0) return;
-
-            const operation = undoStack.pop();
-            redoStack.push(operation);
-
-            // Restore previous state
-            if (operation.hadCellState) {
-                // 之前在 cellState 中，恢复原值
-                cellState[operation.cellInfo.id] = operation.previousState;
-            } else {
-                // 之前不在 cellState 中（使用 base state），删除
-                delete cellState[operation.cellInfo.id];
-            }
-
-            console.log('[Undo] cellState after undo:', Object.keys(cellState).length, 'cells');
-
-            saveCellState();
-            drawCells();
-            drawManualDisplay(); // Update manual sector display
-
-            // 强制浏览器重绘
-            svg.getBoundingClientRect();
-        }
-
-        // Redo last undone operation
-        function redo() {
-            if (redoStack.length === 0) return;
-
-            const operation = redoStack.pop();
-            undoStack.push(operation);
-
-            // Reapply operation
-            cellState[operation.cellInfo.id] = operation.newState;
-
-            console.log('[Redo] cellState after redo:', Object.keys(cellState).length, 'cells');
-
-            saveCellState();
-            drawCells();
-            drawManualDisplay(); // Update manual sector display
-
-            // 强制浏览器重绘
-            svg.getBoundingClientRect();
-        }
-
-        // Load/save functions
-        function loadCellState() {
-            // Load base pattern
-            const savedBase = localStorage.getItem(STORAGE_KEY_BASE);
-            if (savedBase) {
-                try {
-                    baseModuleState = JSON.parse(savedBase);
-                } catch (e) {
-                    initializeBaseState();
-                }
-            } else {
-                initializeBaseState();
-            }
-
-            // Load cell modifications
-            const savedCells = localStorage.getItem(STORAGE_KEY_CELLS);
-            if (savedCells) {
-                try {
-                    cellState = JSON.parse(savedCells);
-                } catch (e) {
-                    cellState = {};
-                }
-            }
-        }
-
+        // Initialize base state
         function initializeBaseState() {
             baseModuleState = {};
             for (let row = 0; row < moduleCount; row++) {
@@ -460,11 +321,17 @@
             localStorage.setItem(STORAGE_KEY_BASE, JSON.stringify(baseModuleState));
         }
 
-        function saveCellState() {
-            localStorage.setItem(STORAGE_KEY_CELLS, JSON.stringify(cellState));
+        // Load base pattern
+        const savedBase = localStorage.getItem(STORAGE_KEY_BASE);
+        if (savedBase) {
+            try {
+                baseModuleState = JSON.parse(savedBase);
+            } catch (e) {
+                initializeBaseState();
+            }
+        } else {
+            initializeBaseState();
         }
-
-        loadCellState();
 
         // Create global defs for clipPaths
         const globalDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
@@ -510,12 +377,6 @@
         originalDisplayLayer.setAttribute('id', 'original-display-layer');
         originalDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
         svg.appendChild(originalDisplayLayer);
-
-        // Manual layer: annular coordinate system (blue)
-        const manualDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        manualDisplayLayer.setAttribute('id', 'manual-display-layer');
-        manualDisplayLayer.setAttribute('opacity', '0.6'); // Semi-transparent for color blending
-        svg.appendChild(manualDisplayLayer);
 
         // Algorithm display layer: annular coordinate system (green)
         const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
