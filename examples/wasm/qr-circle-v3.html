@@ -1666,20 +1666,19 @@
             maskLayer.innerHTML = '';
             if (!maskData) return;
 
-            // Render circles (white fill to mask/hide data, with visible border for debugging)
+            // Render circles (white fill to mask/hide data)
             maskData.circles?.forEach(({ cx, cy, r }) => {
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', cx);
                 circle.setAttribute('cy', cy);
                 circle.setAttribute('r', r);
                 circle.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
-                circle.setAttribute('stroke', '#888888'); // Gray border to see mask boundary
-                circle.setAttribute('stroke-width', '0.05'); // Thin border
+                circle.setAttribute('stroke', 'none'); // No border
                 circle.setAttribute('opacity', '1');
                 maskLayer.appendChild(circle);
             });
 
-            // Render rectangles (white fill to mask/hide data, with visible border for debugging)
+            // Render rectangles (white fill to mask/hide data)
             maskData.rects?.forEach(({ x, y, w, h }) => {
                 const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttribute('x', x);
@@ -1687,8 +1686,7 @@
                 rect.setAttribute('width', w);
                 rect.setAttribute('height', h);
                 rect.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
-                rect.setAttribute('stroke', '#888888'); // Gray border to see mask boundary
-                rect.setAttribute('stroke-width', '0.05'); // Thin border
+                rect.setAttribute('stroke', 'none'); // No border
                 rect.setAttribute('opacity', '1');
                 maskLayer.appendChild(rect);
             });
