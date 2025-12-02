@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Timing Pattern Test</title>
+</head>
+<body>
+    <h1>Timing Pattern 验证</h1>
+    <div id="result"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <script>
+        // Generate QR v3
+        const qr = qrcode(3, 'H');
+        qr.addData('HTTPS://LETS.GO/LXPB$2PI-W6JBZS$BL6', 'Alphanumeric');
+        qr.make();
+
+        const moduleCount = qr.getModuleCount();
+        console.log('Module Count:', moduleCount);
+
+        // Check Timing Pattern at row 6
+        console.log('=== Timing Pattern Row 6 ===');
+        let rowResult = 'Row 6: ';
+        for (let i = 8; i < moduleCount - 8; i++) {
+            const isBlack = qr.isDark(6, i);
+            const color = isBlack ? '黑' : '白';
+            const parity = i % 2 === 0 ? '偶' : '奇';
+            console.log(`(6, ${i}) [${parity}数] = ${color}`);
+            rowResult += `[${i}:${color}] `;
+        }
+
+        // Check Timing Pattern at column 6
+        console.log('=== Timing Pattern Column 6 ===');
+        let colResult = 'Col 6: ';
+        for (let i = 8; i < moduleCount - 8; i++) {
+            const isBlack = qr.isDark(i, 6);
+            const color = isBlack ? '黑' : '白';
+            const parity = i % 2 === 0 ? '偶' : '奇';
+            console.log(`(${i}, 6) [${parity}数] = ${color}`);
+            colResult += `[${i}:${color}] `;
+        }
+
+        // Display results
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerHTML = `
+            <h2>测试结果</h2>
+            <p>${rowResult}</p>
+            <p>${colResult}</p>
+            <h3>结论</h3>
+            <p>如果位置 8 是<strong>黑色</strong>，那么：</p>
+            <ul>
+                <li>偶数位置 (8, 10, 12, ...) = 黑色</li>
+                <li>奇数位置 (9, 11, 13, ...) = 白色</li>
+                <li>遮罩应该选择 <code>i % 2 === 1</code> (奇数位置)</li>
+            </ul>
+            <p>如果位置 8 是<strong>白色</strong>，那么：</p>
+            <ul>
+                <li>偶数位置 (8, 10, 12, ...) = 白色</li>
+                <li>奇数位置 (9, 11, 13, ...) = 黑色</li>
+                <li>遮罩应该选择 <code>i % 2 === 0</code> (偶数位置)</li>
+            </ul>
+        `;
+    </script>
+</body>
+</html>
