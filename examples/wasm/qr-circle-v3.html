@@ -1674,6 +1674,7 @@
                 circle.setAttribute('r', r);
                 circle.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
                 circle.setAttribute('stroke', 'none'); // No border
+                circle.setAttribute('shape-rendering', 'crispEdges'); // Pixel-perfect alignment
                 circle.setAttribute('opacity', '1');
                 maskLayer.appendChild(circle);
             });
@@ -1687,6 +1688,7 @@
                 rect.setAttribute('height', h);
                 rect.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
                 rect.setAttribute('stroke', 'none'); // No border
+                rect.setAttribute('shape-rendering', 'crispEdges'); // Pixel-perfect alignment
                 rect.setAttribute('opacity', '1');
                 maskLayer.appendChild(rect);
             });
