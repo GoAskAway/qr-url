@@ -198,7 +198,7 @@
                 <div class="control-group">
                     <label>
                         <input type="checkbox" id="show-layer-2-mask">
-                        <span style="color: #000000; font-weight: bold;">2️⃣ 功能性遮罩层</span>
+                        <span style="color: #888888; font-weight: bold;">2️⃣ 功能性遮罩层（留白）</span>
                     </label>
                     <div style="margin-left: 24px; margin-top: 5px;">
                         <input type="file" id="upload-mask" accept=".svg" style="font-size: 11px; width: 100%;">
@@ -1659,30 +1659,30 @@
             }
         }
 
-        // Render mask layer
+        // Render mask layer (white/blank areas to hide underlying QR data)
         function renderMask() {
             maskLayer.innerHTML = '';
             if (!maskData) return;
 
-            // Render circles
+            // Render circles (white fill to mask/hide data)
             maskData.circles?.forEach(({ cx, cy, r }) => {
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', cx);
                 circle.setAttribute('cy', cy);
                 circle.setAttribute('r', r);
-                circle.setAttribute('fill', '#000000');
+                circle.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
                 circle.setAttribute('opacity', '1');
                 maskLayer.appendChild(circle);
             });
 
-            // Render rectangles
+            // Render rectangles (white fill to mask/hide data)
             maskData.rects?.forEach(({ x, y, w, h }) => {
                 const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttribute('x', x);
                 rect.setAttribute('y', y);
                 rect.setAttribute('width', w);
                 rect.setAttribute('height', h);
-                rect.setAttribute('fill', '#000000');
+                rect.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
                 rect.setAttribute('opacity', '1');
                 maskLayer.appendChild(rect);
             });
