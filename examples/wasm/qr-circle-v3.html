@@ -415,13 +415,35 @@
 
         // NOTE: Alignment pattern is NOT excluded - it will be converted to sectors like other data areas
 
-        // Center logo region (circular, radius in module units)
-        // QR v3 center is at (14.5, 14.5), logo covers roughly 5x5 to 7x7 modules
-        const LOGO_REGION = { cx: 14.5, cy: 14.5, r: 4, name: 'Center logo' };
+        // Logo and excluded regions defined as rectangular blocks
+        // Source: mask.json - 153 block definitions from mask layer analysis
+        // Each block is defined as {x, y, w, h} where x=col, y=row
+        const LOGO_BLOCK_DEFINITIONS = [{"x":17,"y":9,"w":1,"h":1},{"x":18,"y":10,"w":1,"h":1},{"x":17,"y":10,"w":1,"h":1},{"x":18,"y":11,"w":1,"h":1},{"x":17,"y":11,"w":1,"h":1},{"x":18,"y":12,"w":1,"h":1},{"x":17,"y":12,"w":1,"h":1},{"x":18,"y":13,"w":1,"h":1},{"x":17,"y":13,"w":1,"h":1},{"x":18,"y":14,"w":1,"h":1},{"x":17,"y":14,"w":1,"h":1},{"x":18,"y":15,"w":1,"h":1},{"x":17,"y":15,"w":1,"h":1},{"x":18,"y":16,"w":1,"h":1},{"x":17,"y":16,"w":1,"h":1},{"x":18,"y":17,"w":1,"h":1},{"x":17,"y":17,"w":1,"h":1},{"x":18,"y":18,"w":1,"h":1},{"x":17,"y":18,"w":1,"h":1},{"x":18,"y":19,"w":1,"h":1},{"x":17,"y":19,"w":1,"h":1},{"x":18,"y":20,"w":1,"h":1},{"x":17,"y":20,"w":1,"h":1},{"x":18,"y":21,"w":1,"h":1},{"x":15,"y":20,"w":1,"h":1},{"x":16,"y":19,"w":1,"h":1},{"x":15,"y":19,"w":1,"h":1},{"x":16,"y":18,"w":1,"h":1},{"x":15,"y":18,"w":1,"h":1},{"x":16,"y":17,"w":1,"h":1},{"x":15,"y":17,"w":1,"h":1},{"x":16,"y":16,"w":1,"h":1},{"x":15,"y":16,"w":1,"h":1},{"x":16,"y":15,"w":1,"h":1},{"x":15,"y":15,"w":1,"h":1},{"x":16,"y":14,"w":1,"h":1},{"x":15,"y":14,"w":1,"h":1},{"x":16,"y":13,"w":1,"h":1},{"x":15,"y":13,"w":1,"h":1},{"x":16,"y":12,"w":1,"h":1},{"x":15,"y":12,"w":1,"h":1},{"x":16,"y":11,"w":1,"h":1},{"x":15,"y":11,"w":1,"h":1},{"x":16,"y":10,"w":1,"h":1},{"x":15,"y":10,"w":1,"h":1},{"x":16,"y":9,"w":1,"h":1},{"x":15,"y":9,"w":1,"h":1},{"x":16,"y":8,"w":1,"h":1},{"x":13,"y":9,"w":1,"h":1},{"x":14,"y":10,"w":1,"h":1},{"x":13,"y":10,"w":1,"h":1},{"x":14,"y":11,"w":1,"h":1},{"x":13,"y":11,"w":1,"h":1},{"x":14,"y":12,"w":1,"h":1},{"x":13,"y":12,"w":1,"h":1},{"x":14,"y":13,"w":1,"h":1},{"x":13,"y":13,"w":1,"h":1},{"x":14,"y":14,"w":1,"h":1},{"x":13,"y":14,"w":1,"h":1},{"x":14,"y":15,"w":1,"h":1},{"x":13,"y":15,"w":1,"h":1},{"x":14,"y":16,"w":1,"h":1},{"x":13,"y":16,"w":1,"h":1},{"x":14,"y":17,"w":1,"h":1},{"x":13,"y":17,"w":1,"h":1},{"x":14,"y":18,"w":1,"h":1},{"x":13,"y":18,"w":1,"h":1},{"x":14,"y":19,"w":1,"h":1},{"x":13,"y":19,"w":1,"h":1},{"x":14,"y":20,"w":1,"h":1},{"x":13,"y":20,"w":1,"h":1},{"x":14,"y":21,"w":1,"h":1},{"x":11,"y":20,"w":1,"h":1},{"x":12,"y":19,"w":1,"h":1},{"x":11,"y":19,"w":1,"h":1},{"x":12,"y":18,"w":1,"h":1},{"x":11,"y":18,"w":1,"h":1},{"x":12,"y":17,"w":1,"h":1},{"x":11,"y":17,"w":1,"h":1},{"x":12,"y":16,"w":1,"h":1},{"x":11,"y":16,"w":1,"h":1},{"x":12,"y":15,"w":1,"h":1},{"x":11,"y":15,"w":1,"h":1},{"x":12,"y":14,"w":1,"h":1},{"x":11,"y":14,"w":1,"h":1},{"x":12,"y":13,"w":1,"h":1},{"x":11,"y":13,"w":1,"h":1},{"x":12,"y":12,"w":1,"h":1},{"x":11,"y":12,"w":1,"h":1},{"x":12,"y":11,"w":1,"h":1},{"x":11,"y":11,"w":1,"h":1},{"x":12,"y":10,"w":1,"h":1},{"x":11,"y":10,"w":1,"h":1},{"x":12,"y":9,"w":1,"h":1},{"x":11,"y":9,"w":1,"h":1},{"x":12,"y":8,"w":1,"h":1},{"x":9,"y":9,"w":1,"h":1},{"x":10,"y":10,"w":1,"h":1},{"x":9,"y":10,"w":1,"h":1},{"x":10,"y":11,"w":1,"h":1},{"x":9,"y":11,"w":1,"h":1},{"x":10,"y":12,"w":1,"h":1},{"x":9,"y":12,"w":1,"h":1},{"x":10,"y":13,"w":1,"h":1},{"x":9,"y":13,"w":1,"h":1},{"x":10,"y":14,"w":1,"h":1},{"x":9,"y":14,"w":1,"h":1},{"x":10,"y":15,"w":1,"h":1},{"x":9,"y":15,"w":1,"h":1},{"x":10,"y":16,"w":1,"h":1},{"x":9,"y":16,"w":1,"h":1},{"x":10,"y":17,"w":1,"h":1},{"x":28,"y":28,"w":1,"h":1},{"x":27,"y":28,"w":1,"h":1},{"x":28,"y":27,"w":1,"h":1},{"x":27,"y":27,"w":1,"h":1},{"x":28,"y":26,"w":1,"h":1},{"x":27,"y":26,"w":1,"h":1},{"x":28,"y":25,"w":1,"h":1},{"x":27,"y":25,"w":1,"h":1},{"x":26,"y":25,"w":1,"h":1},{"x":25,"y":25,"w":1,"h":1},{"x":26,"y":26,"w":1,"h":1},{"x":25,"y":26,"w":1,"h":1},{"x":26,"y":27,"w":1,"h":1},{"x":25,"y":27,"w":1,"h":1},{"x":26,"y":28,"w":1,"h":1},{"x":25,"y":28,"w":1,"h":1},{"x":0,"y":7,"w":8,"h":1},{"x":7,"y":0,"w":1,"h":8},{"x":21,"y":7,"w":8,"h":1},{"x":21,"y":0,"w":1,"h":8},{"x":0,"y":21,"w":8,"h":1},{"x":7,"y":21,"w":1,"h":8},{"x":9,"y":6,"w":1,"h":1},{"x":6,"y":9,"w":1,"h":1},{"x":11,"y":6,"w":1,"h":1},{"x":6,"y":11,"w":1,"h":1},{"x":13,"y":6,"w":1,"h":1},{"x":6,"y":13,"w":1,"h":1},{"x":15,"y":6,"w":1,"h":1},{"x":6,"y":15,"w":1,"h":1},{"x":17,"y":6,"w":1,"h":1},{"x":6,"y":17,"w":1,"h":1},{"x":19,"y":6,"w":1,"h":1},{"x":6,"y":19,"w":1,"h":1},{"x":0,"y":17,"w":1,"h":1},{"x":1,"y":18,"w":1,"h":1},{"x":0,"y":18,"w":1,"h":1},{"x":1,"y":19,"w":1,"h":1},{"x":0,"y":19,"w":1,"h":1},{"x":1,"y":20,"w":1,"h":1},{"x":0,"y":20,"w":1,"h":1}];
 
-        // Tail margin region (last 7 bits of data, bottom-right area)
-        // For QR v3, these are approximately in the bottom-right data region
-        const TAIL_MARGIN_REGION = { rowMin: 25, rowMax: 29, colMin: 25, colMax: 29, name: 'Tail margin' };
+        // Expand block definitions to individual 1×1 cells
+        // For blocks with w>1 or h>1, generate all constituent cells
+        const LOGO_BLOCKS = (() => {
+            const blocks = [];
+            for (const def of LOGO_BLOCK_DEFINITIONS) {
+                for (let dy = 0; dy < def.h; dy++) {
+                    for (let dx = 0; dx < def.w; dx++) {
+                        blocks.push({
+                            row: def.y + dy,
+                            col: def.x + dx
+                        });
+                    }
+                }
+            }
+            console.log(`[LOGO_BLOCKS] Expanded ${LOGO_BLOCK_DEFINITIONS.length} block definitions into ${blocks.length} individual cells`);
+            return blocks;
+        })();
+
+        // Create a fast lookup Set for logo blocks (key: "row,col")
+        const LOGO_BLOCKS_SET = new Set(LOGO_BLOCKS.map(b => `${b.row},${b.col}`));
+
+        // Legacy definitions (kept for reference, but not used)
+        // const LOGO_REGION = { cx: 14.5, cy: 14.5, r: 4, name: 'Center logo' };
+        // const TAIL_MARGIN_REGION = { rowMin: 25, rowMax: 29, colMin: 25, colMax: 29, name: 'Tail margin' };
 
         // Helper: Check if a point (in module coordinates) is in any skip region
         function isPointInSkipRegion(x, y) {
@@ -435,16 +457,12 @@
 
             // NOTE: Alignment pattern is NOT excluded - it will be sector-converted
 
-            // Check logo region (circular)
-            const dx = x - LOGO_REGION.cx;
-            const dy = y - LOGO_REGION.cy;
-            if (Math.sqrt(dx * dx + dy * dy) < LOGO_REGION.r) {
-                return true;
-            }
+            // Check logo blocks (1×1 module blocks)
+            // Convert point coordinates to module indices
+            const col = Math.floor(x);
+            const row = Math.floor(y);
 
-            // Check tail margin region
-            if (x >= TAIL_MARGIN_REGION.colMin && x < TAIL_MARGIN_REGION.colMax &&
-                y >= TAIL_MARGIN_REGION.rowMin && y < TAIL_MARGIN_REGION.rowMax) {
+            if (LOGO_BLOCKS_SET.has(`${row},${col}`)) {
                 return true;
             }
 
