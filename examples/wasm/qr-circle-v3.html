@@ -227,21 +227,37 @@
                 </div>
                 <div class="control-group">
                     <label>
-                        <input type="checkbox" id="show-layer-2-mask" checked>
-                        <span style="color: #888888; font-weight: bold;">2️⃣ 功能性遮罩层（留白）</span>
-                    </label>
-                    <div style="margin-left: 24px; margin-top: 5px;">
-                        <input type="file" id="upload-mask" accept=".svg" style="font-size: 11px; width: 100%;">
-                        <button id="clear-mask" style="margin-top: 5px; padding: 4px 8px; font-size: 11px; cursor: pointer; background: #f44336; color: white; border: none; border-radius: 3px;">
-                            清除遮罩
-                        </button>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <label>
                         <input type="checkbox" id="show-layer-1-original" checked>
                         <span style="color: #FF0000; font-weight: bold;">1️⃣ 原始 QR 层（最底层）</span>
                     </label>
+                </div>
+            </div>
+
+            <div class="section-title">定位点参数</div>
+            <div class="controls">
+                <div class="control-group">
+                    <label style="display: block; margin-bottom: 3px;">
+                        <span style="color: #aaa;">主定位点外环半径: <span id="finder-outer-radius-value">3.5</span></span>
+                    </label>
+                    <input type="range" id="finder-outer-radius" min="2.5" max="4.5" step="0.1" value="3.5" style="width: 100%;">
+                </div>
+                <div class="control-group">
+                    <label style="display: block; margin-bottom: 3px;">
+                        <span style="color: #aaa;">主定位点环宽度: <span id="finder-ring-width-value">1.0</span></span>
+                    </label>
+                    <input type="range" id="finder-ring-width" min="0.3" max="2.0" step="0.1" value="1.0" style="width: 100%;">
+                </div>
+                <div class="control-group">
+                    <label style="display: block; margin-bottom: 3px;">
+                        <span style="color: #aaa;">主定位点中心圆半径: <span id="finder-center-radius-value">1.5</span></span>
+                    </label>
+                    <input type="range" id="finder-center-radius" min="0.5" max="2.5" step="0.1" value="1.5" style="width: 100%;">
+                </div>
+                <div class="control-group">
+                    <label style="display: block; margin-bottom: 3px;">
+                        <span style="color: #aaa;">辅助定位点中心圆半径: <span id="alignment-center-radius-value">0.5</span></span>
+                    </label>
+                    <input type="range" id="alignment-center-radius" min="0.2" max="1.5" step="0.1" value="0.5" style="width: 100%;">
                 </div>
             </div>
 
@@ -290,8 +306,7 @@
                 <br>
                 <strong>图层架构（自下而上）：</strong><br>
                 • 1️⃣ 原始 QR 层：红色+白色背景<br>
-                • 2️⃣ 功能性遮罩层：白色留白区域<br>
-                • 2.5 辅助调试层：网格线、圆环、放射线（遮罩之上）<br>
+                • 2️⃣ 辅助调试层：网格线、圆环、放射线<br>
                 • 3️⃣ 算法扇环层：绿色扇环图案<br>
                 • 4️⃣ 修饰网格层：白色环形装饰<br>
             </div>
@@ -379,6 +394,97 @@
         let whiteRingStrokeWidth = 1.0; // White ring decoration stroke width (configurable)
         let algorithmStats = null; // Algorithm execution statistics
 
+        // Finder pattern parameters (configurable)
+        let finderOuterRadius = 3.5;   // Outer radius of finder pattern
+        let finderRingWidth = 1.0;     // Width of the ring (outer - middle)
+        let finderCenterRadius = 1.5;  // Radius of center dot
+
+        // Alignment pattern parameters (configurable)
+        let alignmentCenterRadius = 0.5; // Radius of alignment pattern center dot
+
+        // ========== SKIP REGIONS (excluded from sector conversion) ==========
+        // These regions are drawn with special patterns (finder/alignment) or reserved for logo
+        // Coordinates are in module units (0-28 for QR v3)
+
+        // Finder pattern regions (7x7 + 1 separator = 8x8 each)
+        const FINDER_REGIONS = [
+            { rowMin: 0, rowMax: 8, colMin: 0, colMax: 8, name: 'Top-left finder' },
+            { rowMin: 0, rowMax: 8, colMin: 21, colMax: 29, name: 'Top-right finder' },
+            { rowMin: 21, rowMax: 29, colMin: 0, colMax: 8, name: 'Bottom-left finder' }
+        ];
+
+        // NOTE: Alignment pattern is NOT excluded - it will be converted to sectors like other data areas
+
+        // Center logo region (circular, radius in module units)
+        // QR v3 center is at (14.5, 14.5), logo covers roughly 5x5 to 7x7 modules
+        const LOGO_REGION = { cx: 14.5, cy: 14.5, r: 4, name: 'Center logo' };
+
+        // Tail margin region (last 7 bits of data, bottom-right area)
+        // For QR v3, these are approximately in the bottom-right data region
+        const TAIL_MARGIN_REGION = { rowMin: 25, rowMax: 29, colMin: 25, colMax: 29, name: 'Tail margin' };
+
+        // Helper: Check if a point (in module coordinates) is in any skip region
+        function isPointInSkipRegion(x, y) {
+            // Check finder regions
+            for (const region of FINDER_REGIONS) {
+                if (x >= region.colMin && x < region.colMax &&
+                    y >= region.rowMin && y < region.rowMax) {
+                    return true;
+                }
+            }
+
+            // NOTE: Alignment pattern is NOT excluded - it will be sector-converted
+
+            // Check logo region (circular)
+            const dx = x - LOGO_REGION.cx;
+            const dy = y - LOGO_REGION.cy;
+            if (Math.sqrt(dx * dx + dy * dy) < LOGO_REGION.r) {
+                return true;
+            }
+
+            // Check tail margin region
+            if (x >= TAIL_MARGIN_REGION.colMin && x < TAIL_MARGIN_REGION.colMax &&
+                y >= TAIL_MARGIN_REGION.rowMin && y < TAIL_MARGIN_REGION.rowMax) {
+                return true;
+            }
+
+            return false;
+        }
+
+        // Helper: Check if a sector overlaps significantly with skip regions
+        // Returns true if more than 50% of sector sample points are in skip regions
+        function shouldSkipSector(radialIndex, ringIndex) {
+            const angle1 = radialIndex * RADIAL_ANGLE * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * RADIAL_ANGLE * Math.PI / 180;
+            const r1 = ringIndex * RING_INTERVAL;
+            const r2 = (ringIndex + 1) * RING_INTERVAL;
+
+            // Sample 9 points in the sector
+            let skipCount = 0;
+            const samples = 9;
+            for (let ri = 0; ri < 3; ri++) {
+                for (let ai = 0; ai < 3; ai++) {
+                    const r = r1 + (r2 - r1) * (ri + 0.5) / 3;
+                    const a = angle1 + (angle2 - angle1) * (ai + 0.5) / 3;
+                    const x = center.x + r * Math.cos(a);
+                    const y = center.y + r * Math.sin(a);
+
+                    if (isPointInSkipRegion(x, y)) {
+                        skipCount++;
+                    }
+                }
+            }
+
+            // Skip if majority of sample points are in skip regions
+            return skipCount > samples / 2;
+        }
+
+        // Helper: Check if a module (by row, col) is in skip region
+        // This is a convenience wrapper for isPointInSkipRegion using module center
+        function isModuleInSkipRegion(row, col) {
+            return isPointInSkipRegion(col + 0.5, row + 0.5);
+        }
+
         const RADIAL_COUNT = 240; // 240 radial lines (every 1.5°)
         const RADIAL_ANGLE = 360 / RADIAL_COUNT; // Degrees per sector (1.5°)
         const RING_INTERVAL = 0.5; // Ring every 0.5 units
@@ -442,8 +548,11 @@
                 dataSource = sectorColorsWithEdge;
             }
 
-            // Draw white sectors for all algorithm data (both black and white sectors)
+            // Draw white sectors only for BLACK regions (where algorithm draws green)
             for (const [sectorId, color] of Object.entries(dataSource)) {
+                // Only include black regions (color = true), skip white regions
+                if (!color) continue;
+
                 // Parse sector ID: "radial:idx|ring:idx"
                 const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
                 if (!match) continue;
@@ -476,13 +585,7 @@
         originalDisplayLayer.setAttribute('opacity', '1'); // Fully opaque
         svg.appendChild(originalDisplayLayer);
 
-        // Layer 2: Functional mask layer (white, fully opaque to hide data)
-        const maskLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        maskLayer.setAttribute('id', 'layer-2-mask');
-        maskLayer.setAttribute('opacity', '1'); // Fully opaque
-        svg.appendChild(maskLayer);
-
-        // Layer 2.5: Auxiliary debug layer (above mask, below algorithm)
+        // Layer 2: Auxiliary debug layer (above original, below algorithm)
         const gridLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         gridLayer.setAttribute('id', 'grid-layer');
         svg.appendChild(gridLayer);
@@ -600,12 +703,9 @@
             radialLayer.appendChild(centerDot);
         }
 
-        // Draw white rings - only on sectors with algorithm data (intersection)
+        // Draw white rings - complete circles clipped by algorithm layer mask
         function drawWhiteRings() {
             whiteRingLayer.innerHTML = '';
-
-            // No mask needed - we draw arcs directly
-            whiteRingLayer.removeAttribute('mask');
 
             // Check if algorithm has data
             if (Object.keys(sectorColors).length === 0) {
@@ -613,7 +713,10 @@
                 return;
             }
 
-            // Choose data source based on optimization toggles
+            // Apply mask to only show where algorithm layer has data (intersection)
+            whiteRingLayer.setAttribute('mask', 'url(#white-ring-mask)');
+
+            // Choose data source based on optimization toggles to determine max ring
             let dataSource = sectorColors;
             let sourceLabel = 'base';
             if (coverageOptimizationEnabled) {
@@ -624,110 +727,35 @@
                 sourceLabel = 'edge-extended';
             }
 
-            console.log(`[drawWhiteRings] Using data source: ${sourceLabel}, total sectors: ${Object.keys(dataSource).length}`);
-
-            // Group sectors by ring index for efficient drawing
-            const ringMap = new Map(); // ringIndex -> Set of radialIndices
-
-            for (const [sectorId, color] of Object.entries(dataSource)) {
-                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
-                if (!match) continue;
-
-                const radialIndex = parseInt(match[1]);
-                const ringIndex = parseInt(match[2]);
-
-                if (!ringMap.has(ringIndex)) {
-                    ringMap.set(ringIndex, new Set());
+            // Find the maximum ring index from the data
+            let maxRingIndex = 0;
+            for (const sectorId of Object.keys(dataSource)) {
+                const match = sectorId.match(/ring:(\d+)/);
+                if (match) {
+                    maxRingIndex = Math.max(maxRingIndex, parseInt(match[1]));
                 }
-                ringMap.get(ringIndex).add(radialIndex);
             }
 
-            // Draw white ring arcs for each ring
-            let arcCount = 0;
-            console.log(`[drawWhiteRings] Processing ${ringMap.size} rings`);
+            console.log(`[drawWhiteRings] Drawing complete circles with mask, maxRingIndex=${maxRingIndex}, source=${sourceLabel}`);
 
-            for (const [ringIndex, radialSet] of ringMap.entries()) {
+            // Draw complete concentric circles (will be clipped by mask)
+            for (let ringIndex = 0; ringIndex <= maxRingIndex; ringIndex++) {
                 const radius = (ringIndex + 0.5) * RING_INTERVAL; // Center of ring
 
-                // Convert radial indices to sorted array for continuous arc detection
-                const radialIndices = Array.from(radialSet).sort((a, b) => a - b);
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', center.x);
+                circle.setAttribute('cy', center.y);
+                circle.setAttribute('r', radius);
+                circle.setAttribute('fill', 'none');
+                circle.setAttribute('stroke', 'white');
+                circle.setAttribute('stroke-width', whiteRingStrokeWidth.toString());
+                circle.setAttribute('vector-effect', 'non-scaling-stroke');
+                circle.setAttribute('opacity', '0.8');
 
-                console.log(`[drawWhiteRings] Ring ${ringIndex}: ${radialIndices.length} sectors, radius=${radius.toFixed(2)}`);
-
-                // Find continuous arc segments
-                const arcSegments = [];
-                let segmentStart = radialIndices[0];
-                let segmentEnd = radialIndices[0];
-
-                for (let i = 1; i < radialIndices.length; i++) {
-                    const current = radialIndices[i];
-                    const prev = radialIndices[i - 1];
-
-                    if (current === prev + 1) {
-                        // Continue current segment
-                        segmentEnd = current;
-                    } else {
-                        // Start new segment
-                        arcSegments.push({ start: segmentStart, end: segmentEnd });
-                        segmentStart = current;
-                        segmentEnd = current;
-                    }
-                }
-                // Add last segment
-                arcSegments.push({ start: segmentStart, end: segmentEnd });
-
-                // Check if first and last segments are continuous (wrap around)
-                if (arcSegments.length > 1) {
-                    const first = arcSegments[0];
-                    const last = arcSegments[arcSegments.length - 1];
-                    if (first.start === 0 && last.end === RADIAL_COUNT - 1) {
-                        // Merge wrapped segments
-                        arcSegments[0].start = last.start;
-                        arcSegments.pop();
-                        console.log(`[drawWhiteRings] Merged wrap-around segment`);
-                    }
-                }
-
-                console.log(`[drawWhiteRings] Ring ${ringIndex}: ${arcSegments.length} arc segments`);
-
-                // Draw each arc segment
-                for (const segment of arcSegments) {
-                    const startAngle = segment.start * RADIAL_ANGLE;
-                    const endAngle = (segment.end + 1) * RADIAL_ANGLE;
-
-                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-
-                    // Create arc path
-                    const a1 = startAngle * Math.PI / 180;
-                    const a2 = endAngle * Math.PI / 180;
-                    const x1 = center.x + radius * Math.cos(a1);
-                    const y1 = center.y + radius * Math.sin(a1);
-                    const x2 = center.x + radius * Math.cos(a2);
-                    const y2 = center.y + radius * Math.sin(a2);
-
-                    // Determine if this is a large arc (> 180 degrees)
-                    const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
-
-                    const pathData = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius.toFixed(2)} ${radius.toFixed(2)} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
-
-                    path.setAttribute('d', pathData);
-                    path.setAttribute('fill', 'none');
-                    path.setAttribute('stroke', 'white');
-                    path.setAttribute('stroke-width', whiteRingStrokeWidth.toString());
-                    path.setAttribute('vector-effect', 'non-scaling-stroke');
-                    path.setAttribute('opacity', '0.8');
-                    path.setAttribute('stroke-linecap', 'round');
-
-                    whiteRingLayer.appendChild(path);
-                    arcCount++;
-
-                    if (arcCount <= 5) {
-                        console.log(`[drawWhiteRings] Arc ${arcCount}: ring=${ringIndex}, sectors=${segment.start}-${segment.end}, angles=${startAngle.toFixed(1)}°-${endAngle.toFixed(1)}°, path=${pathData.substring(0, 80)}...`);
-                    }
-                }
+                whiteRingLayer.appendChild(circle);
             }
 
-            console.log(`[drawWhiteRings] ✅ Drew ${arcCount} arc segments from ${ringMap.size} rings`);
+            console.log(`[drawWhiteRings] ✅ Drew ${maxRingIndex + 1} complete circles with mask intersection`);
         }
 
         // ========== ALGORITHM: Automatic Sector-Ring Conversion ==========
@@ -903,38 +931,6 @@
             return row >= 21 && row <= 23 && col >= 21 && col <= 23;
         }
 
-        // Helper: Check if a module is covered by mask layer
-        function isModuleMaskedByLayer(row, col) {
-            if (!maskData) return false;
-
-            const moduleX = col + 0.5; // Center of module
-            const moduleY = row + 0.5;
-
-            // Check circles
-            if (maskData.circles) {
-                for (const circle of maskData.circles) {
-                    const dx = moduleX - circle.cx;
-                    const dy = moduleY - circle.cy;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    if (distance < circle.r) {
-                        return true; // Module is masked by this circle
-                    }
-                }
-            }
-
-            // Check rectangles
-            if (maskData.rects) {
-                for (const rect of maskData.rects) {
-                    if (moduleX >= rect.x && moduleX < rect.x + rect.w &&
-                        moduleY >= rect.y && moduleY < rect.y + rect.h) {
-                        return true; // Module is masked by this rectangle
-                    }
-                }
-            }
-
-            return false;
-        }
-
         // Helper: Check if a module is an edge module (on QR rectangular boundary)
         // Uses Cartesian coordinates (row, col), not polar coordinates
         // For QR v3 (29×29): edge modules are the outermost ring (row/col 0 or 28)
@@ -1030,9 +1026,9 @@
                     continue;
                 }
 
-                // Check if module is masked (treat as white if masked)
-                const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
-                const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
+                // Check if module is in skip region (treat as white if in skip region)
+                const isInSkipArea = isPointInSkipRegion(gridCol + 0.5, gridRow + 0.5);
+                const isBlack = isInSkipArea ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
 
                 gridColors.add(isBlack);
 
@@ -1045,7 +1041,7 @@
                 if (debug) {
                     gridDetails.push({
                         grid: `${gridRow},${gridCol}`,
-                        color: isMasked ? 'white (masked)' : (isBlack ? 'black' : 'white'),
+                        color: isInSkipArea ? 'white (skip region)' : (isBlack ? 'black' : 'white'),
                         area: overlapArea.toFixed(4)
                     });
                 }
@@ -1137,15 +1133,15 @@
                     if (isInFinderPatternRegion(gridRow, gridCol)) continue;
                     if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
 
-                    // Check module color (considering mask)
-                    const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
-                    const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
+                    // Check module color (considering skip regions)
+                    const isInSkipArea = isPointInSkipRegion(gridCol + 0.5, gridRow + 0.5);
+                    const isBlack = isInSkipArea ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
 
                     moduleDetails.push({
                         row: gridRow,
                         col: gridCol,
                         isBlack: isBlack,
-                        isMasked: isMasked
+                        isInSkipArea: isInSkipArea
                     });
 
                     if (isBlack) {
@@ -1285,7 +1281,7 @@
                         // Skip special regions
                         if (isInFinderPatternRegion(row, col)) continue;
                         if (isInAlignmentPatternInner(row, col)) continue;
-                        if (isModuleMaskedByLayer(row, col)) continue;
+                        if (isPointInSkipRegion(col + 0.5, row + 0.5)) continue;
 
                         const isBlack = baseModuleState[`${row},${col}`] || false;
                         const coverage = calculateModuleCoverage(row, col, optimizedColors, sampleSize);
@@ -1332,6 +1328,8 @@
                     // Construct candidate sectors
                     const candidateSectors = overlappingSectors
                         .filter(s => s && s.radialIndex !== undefined && s.ringIndex !== undefined)
+                        // Skip sectors in skip regions (they don't exist in sectorColors)
+                        .filter(s => !shouldSkipSector(s.radialIndex, s.ringIndex))
                         .map(s => {
                             const sectorId = `radial:${s.radialIndex}|ring:${s.ringIndex}`;
                             return {
@@ -1341,7 +1339,7 @@
                                 ringIndex: s.ringIndex
                             };
                         })
-                        .filter(s => !optimizedColors[s.sectorId]) // Only white sectors
+                        .filter(s => optimizedColors[s.sectorId] === false) // Only white sectors (explicitly false, not undefined)
                         .sort((a, b) => b.coverageOfModule - a.coverageOfModule);
 
                     // Skip if no candidates
@@ -1383,7 +1381,7 @@
                             if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
                             if (isInFinderPatternRegion(gridRow, gridCol)) continue;
                             if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
-                            if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+                            if (isModuleInSkipRegion(gridRow, gridCol)) continue;
 
                             // CRITICAL: Skip the target module itself - we're trying to fix it!
                             // It's OK if it's still below threshold, as long as we're making progress
@@ -1449,6 +1447,8 @@
                     // For white modules, filter for BLACK sectors to remove
                     const candidateSectors = overlappingSectors
                         .filter(s => s && s.radialIndex !== undefined && s.ringIndex !== undefined)
+                        // Skip sectors in skip regions (they don't exist in sectorColors)
+                        .filter(s => !shouldSkipSector(s.radialIndex, s.ringIndex))
                         .map(s => {
                             const sectorId = `radial:${s.radialIndex}|ring:${s.ringIndex}`;
                             return {
@@ -1458,7 +1458,7 @@
                                 ringIndex: s.ringIndex
                             };
                         })
-                        .filter(s => optimizedColors[s.sectorId]) // Only BLACK sectors
+                        .filter(s => optimizedColors[s.sectorId] === true) // Only BLACK sectors (explicitly true)
                         .sort((a, b) => b.coverageOfModule - a.coverageOfModule);
 
                     // Skip if no candidates
@@ -1501,7 +1501,7 @@
                         if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
                         if (isInFinderPatternRegion(gridRow, gridCol)) continue;
                         if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
-                        if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+                        if (isModuleInSkipRegion(gridRow, gridCol)) continue;
 
                         // CRITICAL: Skip the target module itself - we're trying to fix it!
                         // It's OK if it's still above threshold, as long as we're making progress
@@ -1572,7 +1572,7 @@
                     for (let col = 0; col < moduleCount; col++) {
                         if (isInFinderPatternRegion(row, col)) continue;
                         if (isInAlignmentPatternInner(row, col)) continue;
-                        if (isModuleMaskedByLayer(row, col)) continue;
+                        if (isModuleInSkipRegion(row, col)) continue;
 
                         const isBlack = baseModuleState[`${row},${col}`] || false;
                         const coverage = calculateModuleCoverage(row, col, optimizedColors, sampleSize);
@@ -1605,7 +1605,7 @@
                                 line += '[OUT] ';
                                 continue;
                             }
-                            if (isInFinderPatternRegion(nr, nc) || isInAlignmentPatternInner(nr, nc) || isModuleMaskedByLayer(nr, nc)) {
+                            if (isInFinderPatternRegion(nr, nc) || isInAlignmentPatternInner(nr, nc) || isModuleInSkipRegion(nr, nc)) {
                                 line += '[MSK] ';
                                 continue;
                             }
@@ -1664,7 +1664,7 @@
                                 if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
                                 if (isInFinderPatternRegion(gridRow, gridCol)) continue;
                                 if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
-                                if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+                                if (isModuleInSkipRegion(gridRow, gridCol)) continue;
                                 if (gridRow === row && gridCol === col) continue;
 
                                 const isModuleBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
@@ -1712,7 +1712,7 @@
                                 line += '[OUT] ';
                                 continue;
                             }
-                            if (isInFinderPatternRegion(nr, nc) || isInAlignmentPatternInner(nr, nc) || isModuleMaskedByLayer(nr, nc)) {
+                            if (isInFinderPatternRegion(nr, nc) || isInAlignmentPatternInner(nr, nc) || isModuleInSkipRegion(nr, nc)) {
                                 line += '[MSK] ';
                                 continue;
                             }
@@ -1771,7 +1771,7 @@
                                 if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
                                 if (isInFinderPatternRegion(gridRow, gridCol)) continue;
                                 if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
-                                if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+                                if (isModuleInSkipRegion(gridRow, gridCol)) continue;
                                 if (gridRow === row && gridCol === col) continue;
 
                                 const isModuleBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
@@ -1886,47 +1886,74 @@
             }
         }
 
-        // Save all checkbox states to localStorage
+        // Save all checkbox and slider states to localStorage
         function saveCheckboxStates() {
             try {
-                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
                 const states = {};
+
+                // Save checkbox states
+                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
                 checkboxes.forEach(cb => {
                     if (cb.id) {
                         states[cb.id] = cb.checked;
                     }
                 });
+
+                // Save slider/range states
+                const sliders = document.querySelectorAll('input[type="range"]');
+                sliders.forEach(slider => {
+                    if (slider.id) {
+                        states[slider.id] = slider.value;
+                    }
+                });
+
                 localStorage.setItem(STORAGE_KEY_CHECKBOXES, JSON.stringify(states));
-                console.log('[Checkbox Cache] ✅ Saved states:', Object.keys(states).length, 'checkboxes');
+                console.log('[State Cache] ✅ Saved states:', Object.keys(states).length, 'controls');
             } catch (e) {
-                console.error('[Checkbox Cache] Failed to save:', e);
+                console.error('[State Cache] Failed to save:', e);
             }
         }
 
-        // Load all checkbox states from localStorage
+        // Load all checkbox and slider states from localStorage
         function loadCheckboxStates() {
             try {
                 const saved = localStorage.getItem(STORAGE_KEY_CHECKBOXES);
                 if (!saved) {
-                    console.log('[Checkbox Cache] No cached states found');
+                    console.log('[State Cache] No cached states found');
                     return false;
                 }
 
                 const states = JSON.parse(saved);
                 let restoredCount = 0;
 
-                for (const [id, checked] of Object.entries(states)) {
-                    const checkbox = document.getElementById(id);
-                    if (checkbox && checkbox.type === 'checkbox') {
-                        checkbox.checked = checked;
+                for (const [id, value] of Object.entries(states)) {
+                    const element = document.getElementById(id);
+                    if (!element) continue;
+
+                    if (element.type === 'checkbox') {
+                        element.checked = value;
+                        restoredCount++;
+                    } else if (element.type === 'range') {
+                        element.value = value;
+                        // Update displayed value
+                        const valueDisplay = document.getElementById(id + '-value');
+                        if (valueDisplay) {
+                            valueDisplay.textContent = parseFloat(value).toFixed(1);
+                        }
+                        // Update global variables for sliders
+                        if (id === 'finder-outer-radius') finderOuterRadius = parseFloat(value);
+                        if (id === 'finder-ring-width') finderRingWidth = parseFloat(value);
+                        if (id === 'finder-center-radius') finderCenterRadius = parseFloat(value);
+                        if (id === 'alignment-center-radius') alignmentCenterRadius = parseFloat(value);
+                        if (id === 'white-ring-width') whiteRingStrokeWidth = parseFloat(value);
                         restoredCount++;
                     }
                 }
 
-                console.log(`[Checkbox Cache] ✅ Restored ${restoredCount} checkbox states`);
+                console.log(`[State Cache] ✅ Restored ${restoredCount} control states`);
                 return true;
             } catch (e) {
-                console.error('[Checkbox Cache] Failed to load:', e);
+                console.error('[State Cache] Failed to load:', e);
                 return false;
             }
         }
@@ -1949,8 +1976,15 @@
             let processed = 0;
 
             // Iterate through all sectors (radial, ring) - NO grid subdivision
+            let skippedCount = 0;
             for (let ring = 0; ring <= maxRing; ring++) {
                 for (let radial = 0; radial < RADIAL_COUNT; radial++) {
+                    // Skip sectors that overlap with special regions (finder, alignment, logo, tail)
+                    if (shouldSkipSector(radial, ring)) {
+                        skippedCount++;
+                        continue;
+                    }
+
                     // Calculate color for this complete sector
                     const color = calculateSectorColor_Simplified(radial, ring);
                     const sectorId = `radial:${radial}|ring:${ring}`;
@@ -1974,10 +2008,11 @@
 
                     processed++;
                     if (processed % 200 === 0) {
-                        console.log(`[Algorithm] Processed ${processed}/${totalSectors} sectors`);
+                        console.log(`[Algorithm] Processed ${processed}/${totalSectors} sectors (skipped ${skippedCount})`);
                     }
                 }
             }
+            console.log(`[Algorithm] Skipped ${skippedCount} sectors in special regions`);
 
             const endTime = performance.now();
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
@@ -2084,15 +2119,20 @@
         // Helper: Draw circular finder pattern on specified layer
         function drawCircularFinderPatternOnLayer(layer, centerX, centerY, color) {
             const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            const maskId = `finder-mask-${centerX}-${centerY}-${color}`;
+            const maskId = `finder-mask-${centerX}-${centerY}-${color}-${Date.now()}`;
             const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
             mask.setAttribute('id', maskId);
+
+            // Calculate radii based on configurable parameters
+            const outerR = finderOuterRadius;
+            const middleR = finderOuterRadius - finderRingWidth;
+            const innerR = finderCenterRadius;
 
             // Outer circle (white)
             const outerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             outerCircle.setAttribute('cx', centerX);
             outerCircle.setAttribute('cy', centerY);
-            outerCircle.setAttribute('r', 3.5);
+            outerCircle.setAttribute('r', outerR);
             outerCircle.setAttribute('fill', 'white');
             mask.appendChild(outerCircle);
 
@@ -2100,7 +2140,7 @@
             const middleCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             middleCircle.setAttribute('cx', centerX);
             middleCircle.setAttribute('cy', centerY);
-            middleCircle.setAttribute('r', 2.5);
+            middleCircle.setAttribute('r', middleR);
             middleCircle.setAttribute('fill', 'black');
             mask.appendChild(middleCircle);
 
@@ -2108,7 +2148,7 @@
             const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             innerCircle.setAttribute('cx', centerX);
             innerCircle.setAttribute('cy', centerY);
-            innerCircle.setAttribute('r', 1.5);
+            innerCircle.setAttribute('r', innerR);
             innerCircle.setAttribute('fill', 'white');
             mask.appendChild(innerCircle);
 
@@ -2119,7 +2159,7 @@
             const outerRing = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             outerRing.setAttribute('cx', centerX);
             outerRing.setAttribute('cy', centerY);
-            outerRing.setAttribute('r', 3.5);
+            outerRing.setAttribute('r', outerR);
             outerRing.setAttribute('fill', color);
             outerRing.setAttribute('mask', `url(#${maskId})`);
             layer.appendChild(outerRing);
@@ -2128,17 +2168,17 @@
             const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             centerDot.setAttribute('cx', centerX);
             centerDot.setAttribute('cy', centerY);
-            centerDot.setAttribute('r', 1.5);
+            centerDot.setAttribute('r', innerR);
             centerDot.setAttribute('fill', color);
             layer.appendChild(centerDot);
         }
 
         // Helper: Draw circular alignment pattern on specified layer (ring pattern)
         // 5x5 pattern: Black(1) - White(1) - Black(1) - White(1) - Black(1)
-        // Radii: outer=2.5, middle=1.5, center=0.5
+        // Radii: outer=2.5, middle=1.5, center=configurable
         function drawCircularAlignmentPatternOnLayer(layer, centerX, centerY, color) {
             const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-            const maskId = `alignment-mask-${centerX}-${centerY}-${color}`;
+            const maskId = `alignment-mask-${centerX}-${centerY}-${color}-${Date.now()}`;
             const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
             mask.setAttribute('id', maskId);
 
@@ -2158,11 +2198,11 @@
             middleCircle.setAttribute('fill', 'black');
             mask.appendChild(middleCircle);
 
-            // Inner circle (white) - radius 0.5, allows center dot to show
+            // Inner circle (white) - radius configurable, allows center dot to show
             const innerCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             innerCircle.setAttribute('cx', centerX);
             innerCircle.setAttribute('cy', centerY);
-            innerCircle.setAttribute('r', 0.5);
+            innerCircle.setAttribute('r', alignmentCenterRadius);
             innerCircle.setAttribute('fill', 'white');
             mask.appendChild(innerCircle);
 
@@ -2178,11 +2218,11 @@
             outerRing.setAttribute('mask', `url(#${maskId})`);
             layer.appendChild(outerRing);
 
-            // Draw the center dot - radius 0.5
+            // Draw the center dot - radius configurable
             const centerDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
             centerDot.setAttribute('cx', centerX);
             centerDot.setAttribute('cy', centerY);
-            centerDot.setAttribute('r', 0.5);
+            centerDot.setAttribute('r', alignmentCenterRadius);
             centerDot.setAttribute('fill', color);
             layer.appendChild(centerDot);
         }
@@ -2353,7 +2393,7 @@
             // White rings skip: finder patterns, alignment inner 3x3, mask layer
             if (isInFinderPatternRegion(row, col) ||
                 isInAlignmentPatternInner(row, col) ||
-                isModuleMaskedByLayer(row, col)) {
+                isModuleInSkipRegion(row, col)) {
                 return false;
             }
 
@@ -2447,7 +2487,7 @@
                     }
 
                     // Skip masked modules (no need to check coverage for masked areas)
-                    if (isModuleMaskedByLayer(row, col)) {
+                    if (isModuleInSkipRegion(row, col)) {
                         skippedCount++;
                         continue;
                     }
@@ -2557,17 +2597,17 @@
                         const nc = col + dc;
                         if (nr >= 0 && nr < moduleCount && nc >= 0 && nc < moduleCount) {
                             const nIsBlack = baseModuleState[`${nr},${nc}`] || false;
-                            const nIsMasked = isModuleMaskedByLayer(nr, nc);
-                            neighbors.push({ row: nr, col: nc, isBlack: nIsBlack, isMasked: nIsMasked });
+                            const nIsInSkip = isModuleInSkipRegion(nr, nc);
+                            neighbors.push({ row: nr, col: nc, isBlack: nIsBlack, isInSkipRegion: nIsInSkip });
                         }
                     }
                 }
 
-                const blackNeighbors = neighbors.filter(n => !n.isMasked && n.isBlack).length;
-                const whiteNeighbors = neighbors.filter(n => !n.isMasked && !n.isBlack).length;
-                const maskedNeighbors = neighbors.filter(n => n.isMasked).length;
+                const blackNeighbors = neighbors.filter(n => !n.isInSkipRegion && n.isBlack).length;
+                const whiteNeighbors = neighbors.filter(n => !n.isInSkipRegion && !n.isBlack).length;
+                const skipRegionNeighbors = neighbors.filter(n => n.isInSkipRegion).length;
 
-                console.log(`  周边模块 (3×3): ${blackNeighbors} 黑, ${whiteNeighbors} 白, ${maskedNeighbors} 遮罩`);
+                console.log(`  周边模块 (3×3): ${blackNeighbors} 黑, ${whiteNeighbors} 白, ${skipRegionNeighbors} 跳过区域`);
 
                 // Suggest potential cause
                 if (isBlack && coverage < MIN_BLACK_COVERAGE) {
@@ -3009,28 +3049,53 @@
             const showLayer1 = document.getElementById('show-layer-1-original');
             if (showLayer1) originalDisplayLayer.style.display = showLayer1.checked ? 'block' : 'none';
 
-            // Layer 2: Mask
-            const showLayer2 = document.getElementById('show-layer-2-mask');
-            if (showLayer2) maskLayer.style.display = showLayer2.checked ? 'block' : 'none';
-
-            // Layer 2.5: Auxiliary
+            // Layer 2: Auxiliary
             const showAux = document.getElementById('show-layer-2.5-auxiliary');
             const showGrid = document.getElementById('show-grid');
             const showCircles = document.getElementById('show-circles');
             const showRadials = document.getElementById('show-radials');
             if (showAux && showGrid && showCircles && showRadials) {
-                gridLayer.style.display = showAux.checked && showGrid.checked ? 'block' : 'none';
-                circleLayer.style.display = showAux.checked && showCircles.checked ? 'block' : 'none';
-                radialLayer.style.display = showAux.checked && showRadials.checked ? 'block' : 'none';
+                const isAuxEnabled = showAux.checked;
+                gridLayer.style.display = isAuxEnabled && showGrid.checked ? 'block' : 'none';
+                circleLayer.style.display = isAuxEnabled && showCircles.checked ? 'block' : 'none';
+                radialLayer.style.display = isAuxEnabled && showRadials.checked ? 'block' : 'none';
+
+                // Enable/disable sub-checkboxes based on parent state
+                showGrid.disabled = !isAuxEnabled;
+                showCircles.disabled = !isAuxEnabled;
+                showRadials.disabled = !isAuxEnabled;
+
+                // Gray out labels when disabled
+                showGrid.parentElement.style.opacity = isAuxEnabled ? '1' : '0.5';
+                showCircles.parentElement.style.opacity = isAuxEnabled ? '1' : '0.5';
+                showRadials.parentElement.style.opacity = isAuxEnabled ? '1' : '0.5';
+            }
+
+            // Layer 3: Algorithm sub-options
+            const showLayer3 = document.getElementById('show-layer-3-algorithm');
+            const edgeExtension = document.getElementById('toggle-edge-extension');
+            const coverageOptimization = document.getElementById('toggle-coverage-optimization');
+            if (showLayer3 && edgeExtension && coverageOptimization) {
+                const isLayer3Enabled = showLayer3.checked;
+                // Enable/disable sub-checkboxes based on parent state
+                edgeExtension.disabled = !isLayer3Enabled;
+                coverageOptimization.disabled = !isLayer3Enabled;
+                // Gray out labels when disabled
+                edgeExtension.parentElement.style.opacity = isLayer3Enabled ? '1' : '0.5';
+                coverageOptimization.parentElement.style.opacity = isLayer3Enabled ? '1' : '0.5';
             }
 
             // Layer 4: Decoration
             const showLayer4 = document.getElementById('show-layer-4-decoration');
             if (showLayer4) whiteRingLayer.style.display = showLayer4.checked ? 'block' : 'none';
 
-            // Dark background
+            // Layer 4: Decoration sub-option (dark background)
             const darkBg = document.getElementById('toggle-dark-background');
-            if (darkBg) {
+            if (showLayer4 && darkBg) {
+                const isLayer4Enabled = showLayer4.checked;
+                darkBg.disabled = !isLayer4Enabled;
+                darkBg.parentElement.style.opacity = isLayer4Enabled ? '1' : '0.5';
+
                 const svgContainer = document.getElementById('svg-container');
                 svgContainer.style.background = darkBg.checked ? '#2a2a2a' : 'white';
             }
@@ -3089,25 +3154,26 @@
         moduleLayer.style.display = 'none';
         algorithmLayer.style.display = 'none';
 
-        // 四层设计的初始显示状态
-        // Layer 1: Original QR - 默认显示 (checked)
-        originalDisplayLayer.style.display = 'block';
+        // 图层设计的初始显示状态 - 根据 checkbox 状态（可能从 localStorage 加载）
+        // Layer 1: Original QR
+        const showLayer1Checkbox = document.getElementById('show-layer-1-original');
+        originalDisplayLayer.style.display = showLayer1Checkbox.checked ? 'block' : 'none';
 
-        // Layer 2: Mask - 默认显示 (checked)
-        maskLayer.style.display = 'block';
-
-        // Layer 3: Algorithm - 根据缓存决定
-        if (hasCachedResults) {
+        // Layer 3: Algorithm - 根据缓存和 checkbox 状态决定
+        const showLayer3Checkbox = document.getElementById('show-layer-3-algorithm');
+        if (hasCachedResults && showLayer3Checkbox.checked) {
             algorithmDisplayLayer.style.display = 'block';
         } else {
             algorithmDisplayLayer.style.display = 'none';
         }
 
-        // Layer 4: Decoration (white rings) - 默认隐藏 (unchecked)
-        whiteRingLayer.style.display = 'none';
+        // Layer 4: Decoration (white rings) - 根据 checkbox 状态
+        const showLayer4Checkbox = document.getElementById('show-layer-4-decoration');
+        whiteRingLayer.style.display = showLayer4Checkbox.checked ? 'block' : 'none';
 
-        // Error layer
-        errorLayer.style.display = 'none';
+        // Error layer - 根据 checkbox 状态
+        const showErrorsCheckbox = document.getElementById('show-errors');
+        errorLayer.style.display = showErrorsCheckbox.checked ? 'block' : 'none';
 
         // Toggle controls for auxiliary layer 2.5
         const showGrid = document.getElementById('show-grid');
@@ -3161,10 +3227,6 @@
         // Four-layer visibility controls
         document.getElementById('show-layer-1-original').addEventListener('change', (e) => {
             originalDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
-        });
-
-        document.getElementById('show-layer-2-mask').addEventListener('change', (e) => {
-            maskLayer.style.display = e.target.checked ? 'block' : 'none';
         });
 
         document.getElementById('show-layer-3-algorithm').addEventListener('change', async (e) => {
@@ -3229,10 +3291,25 @@
                 // Normal toggle behavior
                 algorithmDisplayLayer.style.display = e.target.checked ? 'block' : 'none';
             }
+
+            // Enable/disable sub-checkboxes based on parent state
+            const isChecked = e.target.checked;
+            const edgeExt = document.getElementById('toggle-edge-extension');
+            const coverageOpt = document.getElementById('toggle-coverage-optimization');
+            edgeExt.disabled = !isChecked;
+            coverageOpt.disabled = !isChecked;
+            edgeExt.parentElement.style.opacity = isChecked ? '1' : '0.5';
+            coverageOpt.parentElement.style.opacity = isChecked ? '1' : '0.5';
         });
 
         document.getElementById('show-layer-4-decoration').addEventListener('change', (e) => {
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
+
+            // Enable/disable sub-checkbox based on parent state
+            const isChecked = e.target.checked;
+            const darkBgCheckbox = document.getElementById('toggle-dark-background');
+            darkBgCheckbox.disabled = !isChecked;
+            darkBgCheckbox.parentElement.style.opacity = isChecked ? '1' : '0.5';
 
             // Debug: log white ring layer status
             console.log('[Layer 4 Decoration] Toggled:', e.target.checked);
@@ -3271,6 +3348,44 @@
             drawWhiteRings();
 
             console.log(`[White Ring Width] Changed to ${whiteRingStrokeWidth}`);
+        });
+
+        // Finder pattern parameter controls
+        function redrawAllPatterns() {
+            // Redraw original display (red layer)
+            drawOriginalDisplay();
+            // Redraw algorithm display (green layer) if algorithm has run
+            if (Object.keys(sectorColors).length > 0) {
+                drawAlgorithmDisplay();
+            }
+        }
+
+        document.getElementById('finder-outer-radius').addEventListener('input', (e) => {
+            finderOuterRadius = parseFloat(e.target.value);
+            document.getElementById('finder-outer-radius-value').textContent = finderOuterRadius.toFixed(1);
+            redrawAllPatterns();
+            saveCheckboxStates(); // Save slider values too
+        });
+
+        document.getElementById('finder-ring-width').addEventListener('input', (e) => {
+            finderRingWidth = parseFloat(e.target.value);
+            document.getElementById('finder-ring-width-value').textContent = finderRingWidth.toFixed(1);
+            redrawAllPatterns();
+            saveCheckboxStates();
+        });
+
+        document.getElementById('finder-center-radius').addEventListener('input', (e) => {
+            finderCenterRadius = parseFloat(e.target.value);
+            document.getElementById('finder-center-radius-value').textContent = finderCenterRadius.toFixed(1);
+            redrawAllPatterns();
+            saveCheckboxStates();
+        });
+
+        document.getElementById('alignment-center-radius').addEventListener('input', (e) => {
+            alignmentCenterRadius = parseFloat(e.target.value);
+            document.getElementById('alignment-center-radius-value').textContent = alignmentCenterRadius.toFixed(1);
+            redrawAllPatterns();
+            saveCheckboxStates();
         });
 
         // Edge extension toggle
@@ -3667,10 +3782,9 @@
             // Store original display states
             const layerStates = {
                 original: document.getElementById('show-layer-1-original').checked,
-                mask: document.getElementById('show-layer-2-mask').checked,
                 grid: document.getElementById('show-grid').checked,
                 circles: document.getElementById('show-circles').checked,
-                radial: document.getElementById('show-radials').checked, // Note: 'show-radials' (plural)
+                radial: document.getElementById('show-radials').checked,
                 algorithm: document.getElementById('show-layer-3-algorithm').checked,
                 decoration: document.getElementById('show-layer-4-decoration').checked
             };
@@ -3680,7 +3794,6 @@
             // Get all layers from cloned SVG
             const layers = {
                 original: svgClone.querySelector('#layer-1-original'),
-                mask: svgClone.querySelector('#layer-2-mask'),
                 grid: svgClone.querySelector('#grid-layer'),
                 circles: svgClone.querySelector('#circle-layer'),
                 radial: svgClone.querySelector('#radial-layer'),
@@ -3695,13 +3808,6 @@
             if (layers.grid) layers.grid.style.display = 'none'; // Hide debug grid
             if (layers.circles) layers.circles.style.display = 'none'; // Hide debug circles
             if (layers.radial) layers.radial.style.display = 'none'; // Hide debug radial lines
-
-            // Show layers based on user selection
-            if (layers.mask && layerStates.mask) {
-                layers.mask.style.display = 'block';
-            } else if (layers.mask) {
-                layers.mask.style.display = 'none';
-            }
 
             if (layers.algorithm && layerStates.algorithm) {
                 layers.algorithm.style.display = 'block';
@@ -3802,7 +3908,7 @@
                     URL.revokeObjectURL(url);
 
                     console.log(`[Download] ✅ Downloaded as ${filename}.png (${exportSize}×${exportSize}px)`);
-                    console.log(`[Download] Included layers: mask=${layerStates.mask}, algorithm=${layerStates.algorithm}, decoration=${layerStates.decoration}`);
+                    console.log(`[Download] Included layers: algorithm=${layerStates.algorithm}, decoration=${layerStates.decoration}`);
                 }, 'image/png');
             };
 
@@ -3814,357 +3920,6 @@
 
             img.src = svgUrl;
         });
-
-        // ========== Functional Mask Layer Management ==========
-        const STORAGE_KEY_MASK = 'qr-circle-mask';
-        let maskData = null; // { circles: [], rects: [] }
-
-        // Load mask from localStorage
-        function loadMaskData() {
-            const saved = localStorage.getItem(STORAGE_KEY_MASK);
-            if (saved) {
-                try {
-                    maskData = JSON.parse(saved);
-                    renderMask();
-                    console.log('[Mask] Loaded from localStorage:', maskData);
-                } catch (e) {
-                    console.error('[Mask] Failed to load:', e);
-                }
-            }
-        }
-
-        // Save mask to localStorage
-        function saveMaskData() {
-            if (maskData) {
-                localStorage.setItem(STORAGE_KEY_MASK, JSON.stringify(maskData));
-                console.log('[Mask] Saved to localStorage');
-            }
-        }
-
-        // Render mask layer (white/blank areas to hide underlying QR data)
-        function renderMask() {
-            maskLayer.innerHTML = '';
-            if (!maskData) return;
-
-            // Render circles (white fill to mask/hide data)
-            maskData.circles?.forEach(({ cx, cy, r }, index) => {
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', cx);
-                circle.setAttribute('cy', cy);
-                circle.setAttribute('r', r);
-                circle.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
-                circle.setAttribute('stroke', 'none'); // No border
-                circle.setAttribute('shape-rendering', 'crispEdges'); // Pixel-perfect alignment
-                circle.setAttribute('opacity', '1');
-                maskLayer.appendChild(circle);
-            });
-
-            // Render rectangles (white fill to mask/hide data)
-            maskData.rects?.forEach(({ x, y, w, h }, index) => {
-                const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rect.setAttribute('x', x);
-                rect.setAttribute('y', y);
-                rect.setAttribute('width', w);
-                rect.setAttribute('height', h);
-                rect.setAttribute('fill', '#FFFFFF'); // White to mask underlying data
-                rect.setAttribute('stroke', 'none'); // No border
-                rect.setAttribute('shape-rendering', 'crispEdges'); // Pixel-perfect alignment
-                rect.setAttribute('opacity', '1');
-                maskLayer.appendChild(rect);
-            });
-
-            console.log(`[Mask] Rendered ${maskData.circles?.length || 0} circles and ${maskData.rects?.length || 0} rects`);
-
-            // Print detailed mask region information
-            printMaskRegions();
-        }
-
-        // Print detailed information about mask regions
-        function printMaskRegions() {
-            if (!maskData) {
-                console.log('[Mask Regions] No mask data available');
-                return;
-            }
-
-            console.log('========================================');
-            console.log('🎭 遮罩层区域坐标详情');
-            console.log('========================================');
-
-            const qrCenter = { x: 14.5, y: 14.5 }; // QR v3 中心点
-            const qrSize = 29; // QR v3 尺寸
-
-            // 打印圆形遮罩（通常是中心 logo 区）
-            if (maskData.circles && maskData.circles.length > 0) {
-                console.log('\n📍 圆形遮罩区域（通常为中心 Logo 区）:');
-                maskData.circles.forEach(({ cx, cy, r }, index) => {
-                    const distFromCenter = Math.sqrt(
-                        Math.pow(cx - qrCenter.x, 2) +
-                        Math.pow(cy - qrCenter.y, 2)
-                    );
-                    const isCenter = distFromCenter < 5; // 距离中心 5 个单位内
-
-                    console.log(`  圆形 ${index + 1}:`);
-                    console.log(`    中心: (${cx}, ${cy})`);
-                    console.log(`    半径: ${r}`);
-                    console.log(`    直径: ${r * 2}`);
-                    console.log(`    覆盖范围: x[${cx - r}, ${cx + r}], y[${cy - r}, ${cy + r}]`);
-
-                    // 计算覆盖的码点范围
-                    const minRow = Math.max(0, Math.floor(cy - r));
-                    const maxRow = Math.min(qrSize - 1, Math.ceil(cy + r));
-                    const minCol = Math.max(0, Math.floor(cx - r));
-                    const maxCol = Math.min(qrSize - 1, Math.ceil(cx + r));
-
-                    console.log(`    覆盖码点范围: 行[${minRow}, ${maxRow}], 列[${minCol}, ${maxCol}]`);
-                    console.log(`    位置: ${isCenter ? '✅ 中心区域' : '其他区域'}`);
-                    console.log('');
-                });
-            }
-
-            // 打印矩形遮罩
-            if (maskData.rects && maskData.rects.length > 0) {
-                console.log('\n📐 矩形遮罩区域:');
-                maskData.rects.forEach(({ x, y, w, h }, index) => {
-                    const centerX = x + w / 2;
-                    const centerY = y + h / 2;
-
-                    // 判断位置
-                    let position = '';
-                    if (centerX > qrSize * 0.6 && centerY > qrSize * 0.6) {
-                        position = '✅ 右下角区域';
-                    } else if (centerX < qrSize * 0.4 && centerY < qrSize * 0.4) {
-                        position = '左上角区域';
-                    } else if (centerX > qrSize * 0.6 && centerY < qrSize * 0.4) {
-                        position = '右上角区域';
-                    } else if (centerX < qrSize * 0.4 && centerY > qrSize * 0.6) {
-                        position = '左下角区域';
-                    } else {
-                        position = '中间区域';
-                    }
-
-                    console.log(`  矩形 ${index + 1}:`);
-                    console.log(`    左上角: (${x}, ${y})`);
-                    console.log(`    宽度: ${w}, 高度: ${h}`);
-                    console.log(`    右下角: (${x + w}, ${y + h})`);
-                    console.log(`    中心点: (${centerX}, ${centerY})`);
-
-                    // 计算覆盖的码点范围
-                    const minRow = Math.max(0, Math.floor(y));
-                    const maxRow = Math.min(qrSize - 1, Math.ceil(y + h) - 1);
-                    const minCol = Math.max(0, Math.floor(x));
-                    const maxCol = Math.min(qrSize - 1, Math.ceil(x + w) - 1);
-
-                    console.log(`    覆盖码点范围: 行[${minRow}, ${maxRow}], 列[${minCol}, ${maxCol}]`);
-                    console.log(`    位置: ${position}`);
-                    console.log('');
-                });
-            }
-
-            console.log('========================================');
-            console.log(`总计: ${maskData.circles?.length || 0} 个圆形 + ${maskData.rects?.length || 0} 个矩形`);
-            console.log('========================================\n');
-        }
-
-        // Parse SVG mask file
-        function parseSVGMask(svgText) {
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-            const circles = [];
-            const rects = [];
-
-            // Extract circles
-            svgDoc.querySelectorAll('circle').forEach(circle => {
-                const cx = parseFloat(circle.getAttribute('cx') || 0);
-                const cy = parseFloat(circle.getAttribute('cy') || 0);
-                const r = parseFloat(circle.getAttribute('r') || 0);
-                circles.push({ cx, cy, r });
-            });
-
-            // Extract rectangles
-            svgDoc.querySelectorAll('rect').forEach(rect => {
-                const x = parseFloat(rect.getAttribute('x') || 0);
-                const y = parseFloat(rect.getAttribute('y') || 0);
-                const w = parseFloat(rect.getAttribute('width') || 1);
-                const h = parseFloat(rect.getAttribute('height') || 1);
-                rects.push({ x, y, w, h });
-            });
-
-            return { circles, rects };
-        }
-
-        // Upload mask file
-        document.getElementById('upload-mask').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                try {
-                    const svgText = evt.target.result;
-                    maskData = parseSVGMask(svgText);
-                    saveMaskData();
-                    renderMask();
-
-                    // Auto enable mask layer
-                    document.getElementById('show-layer-2-mask').checked = true;
-                    maskLayer.style.display = 'block';
-
-                    alert(`遮罩已上传！\n圆形: ${maskData.circles.length} 个\n矩形: ${maskData.rects.length} 个`);
-                } catch (error) {
-                    console.error('[Mask] Upload error:', error);
-                    alert('上传失败：' + error.message);
-                }
-            };
-            reader.readAsText(file);
-        });
-
-        // Clear mask
-        document.getElementById('clear-mask').addEventListener('click', () => {
-            if (confirm('确定要清除遮罩吗？')) {
-                maskData = null;
-                maskLayer.innerHTML = '';
-                localStorage.removeItem(STORAGE_KEY_MASK);
-                document.getElementById('upload-mask').value = '';
-                console.log('[Mask] Cleared');
-                alert('遮罩已清除');
-            }
-        });
-
-        // Load mask on init
-        loadMaskData();
-
-        // Add global function to print mask data from localStorage
-        window.printMaskData = function() {
-            console.log('========================================');
-            console.log('📦 读取 localStorage 中的遮罩数据');
-            console.log('========================================\n');
-
-            const saved = localStorage.getItem(STORAGE_KEY_MASK);
-            if (!saved) {
-                console.log('❌ 没有找到遮罩数据');
-                console.log('提示: 请先上传遮罩 SVG 文件');
-                return;
-            }
-
-            try {
-                const data = JSON.parse(saved);
-
-                console.log('✅ 遮罩数据结构:');
-                console.log(`   - 圆形: ${data.circles?.length || 0} 个`);
-                console.log(`   - 矩形: ${data.rects?.length || 0} 个`);
-                console.log('');
-
-                // 打印所有圆形
-                if (data.circles && data.circles.length > 0) {
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log('🔘 圆形区域列表:');
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
-                    data.circles.forEach((circle, index) => {
-                        const { cx, cy, r } = circle;
-                        const qrCenter = { x: 14.5, y: 14.5 };
-                        const distFromCenter = Math.sqrt(
-                            Math.pow(cx - qrCenter.x, 2) +
-                            Math.pow(cy - qrCenter.y, 2)
-                        );
-
-                        console.log(`圆形 #${index + 1}:`);
-                        console.log(`  中心点: (${cx}, ${cy})`);
-                        console.log(`  半径: ${r}`);
-                        console.log(`  直径: ${r * 2}`);
-                        console.log(`  X 范围: [${cx - r} ~ ${cx + r}]`);
-                        console.log(`  Y 范围: [${cy - r} ~ ${cy + r}]`);
-
-                        // 码点范围
-                        const minRow = Math.max(0, Math.floor(cy - r));
-                        const maxRow = Math.min(28, Math.ceil(cy + r));
-                        const minCol = Math.max(0, Math.floor(cx - r));
-                        const maxCol = Math.min(28, Math.ceil(cx + r));
-                        console.log(`  码点行: [${minRow} ~ ${maxRow}]`);
-                        console.log(`  码点列: [${minCol} ~ ${maxCol}]`);
-
-                        // 判断位置
-                        if (distFromCenter < 3) {
-                            console.log(`  位置: ⭐ 中心区域 (距QR中心 ${distFromCenter.toFixed(2)} 单位)`);
-                        } else {
-                            console.log(`  位置: 其他区域 (距QR中心 ${distFromCenter.toFixed(2)} 单位)`);
-                        }
-                        console.log('');
-                    });
-                }
-
-                // 打印所有矩形
-                if (data.rects && data.rects.length > 0) {
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    console.log('▭ 矩形区域列表:');
-                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
-                    data.rects.forEach((rect, index) => {
-                        const { x, y, w, h } = rect;
-                        const centerX = x + w / 2;
-                        const centerY = y + h / 2;
-                        const qrSize = 29;
-
-                        // 判断位置
-                        let position = '';
-                        let emoji = '';
-                        if (centerX > qrSize * 0.65 && centerY > qrSize * 0.65) {
-                            position = '右下角';
-                            emoji = '↘️';
-                        } else if (centerX < qrSize * 0.35 && centerY < qrSize * 0.35) {
-                            position = '左上角';
-                            emoji = '↖️';
-                        } else if (centerX > qrSize * 0.65 && centerY < qrSize * 0.35) {
-                            position = '右上角';
-                            emoji = '↗️';
-                        } else if (centerX < qrSize * 0.35 && centerY > qrSize * 0.65) {
-                            position = '左下角';
-                            emoji = '↙️';
-                        } else if (Math.abs(centerX - 14.5) < 5 && Math.abs(centerY - 14.5) < 5) {
-                            position = '中心';
-                            emoji = '⭐';
-                        } else {
-                            position = '其他';
-                            emoji = '📍';
-                        }
-
-                        console.log(`矩形 #${index + 1}: ${emoji} ${position}区域`);
-                        console.log(`  左上角: (${x}, ${y})`);
-                        console.log(`  右下角: (${x + w}, ${y + h})`);
-                        console.log(`  宽度: ${w}`);
-                        console.log(`  高度: ${h}`);
-                        console.log(`  中心点: (${centerX}, ${centerY})`);
-
-                        // 码点范围
-                        const minRow = Math.max(0, Math.floor(y));
-                        const maxRow = Math.min(28, Math.ceil(y + h) - 1);
-                        const minCol = Math.max(0, Math.floor(x));
-                        const maxCol = Math.min(28, Math.ceil(x + w) - 1);
-                        console.log(`  码点行: [${minRow} ~ ${maxRow}]`);
-                        console.log(`  码点列: [${minCol} ~ ${maxCol}]`);
-                        console.log('');
-                    });
-                }
-
-                // 打印原始 JSON
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.log('📄 原始 JSON 数据:');
-                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                console.log(JSON.stringify(data, null, 2));
-                console.log('');
-
-                console.log('========================================');
-                console.log(`✅ 总计: ${data.circles?.length || 0} 个圆形 + ${data.rects?.length || 0} 个矩形`);
-                console.log('========================================\n');
-
-            } catch (e) {
-                console.error('❌ 解析遮罩数据失败:', e);
-            }
-        };
-
-        // Print instruction
-        console.log('💡 提示: 在控制台输入 printMaskData() 可以查看遮罩层的详细坐标信息');
-        console.log('');
 
         // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
     </script>
