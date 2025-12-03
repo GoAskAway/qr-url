@@ -198,13 +198,15 @@
                     </label>
                     <div style="margin-left: 24px; margin-top: 5px;">
                         <label>
-                            <input type="checkbox" id="toggle-edge-extension">
-                            <span style="color: #88FF88;">应用边缘延伸</span>
+                            <input type="checkbox" id="toggle-edge-extension" checked>
+                            <span style="color: #88FF88;">显示边缘延伸版本</span>
+                            <span style="color: #888; font-size: 0.85em;">(自动执行)</span>
                         </label>
                         <br>
                         <label>
-                            <input type="checkbox" id="toggle-coverage-optimization">
-                            <span style="color: #FFAA66;">覆盖率优化</span>
+                            <input type="checkbox" id="toggle-coverage-optimization" checked>
+                            <span style="color: #FFAA66;">显示覆盖率优化版本</span>
+                            <span style="color: #888; font-size: 0.85em;">(自动执行，默认)</span>
                         </label>
                     </div>
                 </div>
@@ -388,8 +390,10 @@
         let sectorColors = {}; // { "radial:idx|ring:idx": true/false } - sector-based colors (main algorithm)
         let sectorColorsWithEdge = {}; // { "radial:idx|ring:idx": true/false } - with edge extension applied
         let sectorColorsOptimized = {}; // { "radial:idx|ring:idx": true/false } - with coverage optimization applied
-        let edgeExtensionEnabled = false; // Whether to apply edge extension
-        let coverageOptimizationEnabled = false; // Whether to apply coverage optimization
+        // Display toggles for algorithm variants (all variants are always generated)
+        // These control which variant to DISPLAY, not whether to RUN the algorithm
+        let edgeExtensionEnabled = true;  // Display: Edge extension result (auto-generated)
+        let coverageOptimizationEnabled = true;  // Display: Coverage optimization result (auto-generated, default)
         let algorithmState = {}; // Legacy: for comparison with manual edits
         let whiteRingStrokeWidth = 1.0; // White ring decoration stroke width (configurable)
         let algorithmStats = null; // Algorithm execution statistics
@@ -585,7 +589,7 @@
                 return;
             }
 
-            // Choose data source based on optimization toggles
+            // Choose which variant to display (all variants are always generated)
             let dataSource = sectorColors;
             if (coverageOptimizationEnabled) {
                 dataSource = sectorColorsOptimized;
@@ -761,7 +765,7 @@
             // Apply mask to only show where algorithm layer has data (intersection)
             whiteRingLayer.setAttribute('mask', 'url(#white-ring-mask)');
 
-            // Choose data source based on optimization toggles to determine max ring
+            // Choose which variant to display (all variants are always generated) to determine max ring
             let dataSource = sectorColors;
             let sourceLabel = 'base';
             if (coverageOptimizationEnabled) {
@@ -2351,15 +2355,15 @@
                 return;
             }
 
-            // Choose data source based on optimization toggles
+            // Choose which variant to display (all variants are always generated)
             let dataSource = sectorColors;
-            let sourceLabel = '(main algorithm)';
+            let sourceLabel = '(base algorithm)';
             if (coverageOptimizationEnabled) {
                 dataSource = sectorColorsOptimized;
-                sourceLabel = '(with coverage optimization)';
+                sourceLabel = '(coverage optimized - default)';
             } else if (edgeExtensionEnabled) {
                 dataSource = sectorColorsWithEdge;
-                sourceLabel = '(with edge extension)';
+                sourceLabel = '(edge extended)';
             }
 
             console.log(`[drawAlgorithmDisplay] Drawing from: ${sourceLabel}`);
@@ -2481,7 +2485,7 @@
 
         // Pre-compute algorithm sectors Set - called once
         function getAlgorithmSectorsSet() {
-            // Choose data source based on optimization toggles
+            // Choose which variant to display (all variants are always generated)
             let dataSource = sectorColors;
             if (coverageOptimizationEnabled) {
                 dataSource = sectorColorsOptimized;
@@ -3436,17 +3440,17 @@
             saveCheckboxStates();
         });
 
-        // Edge extension toggle
+        // Edge extension display toggle (algorithm always runs, this just switches display)
         document.getElementById('toggle-edge-extension').addEventListener('change', (e) => {
             edgeExtensionEnabled = e.target.checked;
 
-            // If edge extension is disabled, also disable coverage optimization
+            // If edge extension display is disabled, also disable coverage optimization display
             if (!edgeExtensionEnabled && coverageOptimizationEnabled) {
                 coverageOptimizationEnabled = false;
                 document.getElementById('toggle-coverage-optimization').checked = false;
             }
 
-            console.log(`[Edge Extension] Toggle: ${edgeExtensionEnabled ? 'ENABLED' : 'DISABLED'}`);
+            console.log(`[Display Toggle] Edge extension variant: ${edgeExtensionEnabled ? 'SHOWING' : 'HIDDEN'}`);
 
             // Redraw if algorithm has been run
             if (Object.keys(sectorColors).length > 0) {
@@ -3459,7 +3463,7 @@
                 // If error layer is visible, re-run coverage detection with new data source
                 const showErrorsCheckbox = document.getElementById('show-errors');
                 if (showErrorsCheckbox && showErrorsCheckbox.checked) {
-                    console.log('[Edge Extension] Re-running coverage detection with new data source...');
+                    console.log('[Display Toggle] Re-running coverage detection with new display variant...');
                     const checkAlgorithm = algorithmDisplayLayer.style.display !== 'none';
                     const errors = detectCoverageErrors(checkAlgorithm);
                     drawErrorMarkers(errors);
@@ -3467,17 +3471,17 @@
             }
         });
 
-        // Coverage optimization toggle
+        // Coverage optimization display toggle (algorithm always runs, this just switches display)
         document.getElementById('toggle-coverage-optimization').addEventListener('change', (e) => {
-            // Coverage optimization requires edge extension to be enabled
+            // Coverage optimization display requires edge extension display to be enabled
             if (e.target.checked && !edgeExtensionEnabled) {
                 edgeExtensionEnabled = true;
                 document.getElementById('toggle-edge-extension').checked = true;
-                console.log('[Coverage Opt] Auto-enabled edge extension (required)');
+                console.log('[Display Toggle] Auto-enabled edge extension display (required for coverage opt)');
             }
 
             coverageOptimizationEnabled = e.target.checked;
-            console.log(`[Coverage Opt] Toggle: ${coverageOptimizationEnabled ? 'ENABLED' : 'DISABLED'}`);
+            console.log(`[Display Toggle] Coverage optimization variant: ${coverageOptimizationEnabled ? 'SHOWING' : 'HIDDEN'}`);
 
             // Redraw if algorithm has been run
             if (Object.keys(sectorColors).length > 0) {
