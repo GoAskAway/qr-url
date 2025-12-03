@@ -178,6 +178,18 @@
                         <input type="checkbox" id="show-layer-4-decoration">
                         <span style="color: #FFFFFF; font-weight: bold; text-shadow: 0 0 2px #000;">4️⃣ 修饰网格层</span>
                     </label>
+                    <div style="margin-left: 24px; margin-top: 5px;">
+                        <label>
+                            <input type="checkbox" id="toggle-dark-background">
+                            <span style="color: #999;">深色背景（查看白色环）</span>
+                        </label>
+                        <div style="margin-top: 8px;">
+                            <label style="display: block; margin-bottom: 3px;">
+                                <span style="color: #999;">白色环线宽: <span id="white-ring-width-value">1.0</span></span>
+                            </label>
+                            <input type="range" id="white-ring-width" min="0.5" max="3.0" step="0.1" value="1.0" style="width: 100%;">
+                        </div>
+                    </div>
                 </div>
                 <div class="control-group">
                     <label>
@@ -188,6 +200,11 @@
                         <label>
                             <input type="checkbox" id="toggle-edge-extension">
                             <span style="color: #88FF88;">应用边缘延伸</span>
+                        </label>
+                        <br>
+                        <label>
+                            <input type="checkbox" id="toggle-coverage-optimization">
+                            <span style="color: #FFAA66;">覆盖率优化</span>
                         </label>
                     </div>
                 </div>
@@ -254,6 +271,11 @@
                 <div class="control-group">
                     <button id="debug-sector" style="width: 100%; padding: 8px; cursor: pointer; background: #607D8B; color: white; border: none; border-radius: 4px; font-size: 12px;">
                         调试扇环 (Debug Sector)
+                    </button>
+                </div>
+                <div class="control-group">
+                    <button id="download-qr" style="width: 100%; padding: 8px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 4px; font-size: 12px; margin-top: 5px;">
+                        📥 下载纯黑白 QR 码
                     </button>
                 </div>
                 <div id="algorithm-stats" style="margin-top: 10px; padding: 10px; background: #f3e5f5; border-radius: 4px; font-size: 12px; display: none;"></div>
@@ -342,20 +364,30 @@
 
         // Fine-grained cell state management (grid + radials + rings)
         const STORAGE_KEY_BASE = 'qr-circle-base';
+        const STORAGE_KEY_ALGORITHM = 'qr-circle-algorithm'; // Cache for algorithm results
+        const STORAGE_KEY_CHECKBOXES = 'qr-circle-checkboxes'; // Cache for checkbox states
         let baseModuleState = {}; // { "row,col": true/false } - base QR pattern
 
         // Algorithm state (automatic conversion result)
         // Store sector colors directly, without grid subdivision
         let sectorColors = {}; // { "radial:idx|ring:idx": true/false } - sector-based colors (main algorithm)
         let sectorColorsWithEdge = {}; // { "radial:idx|ring:idx": true/false } - with edge extension applied
+        let sectorColorsOptimized = {}; // { "radial:idx|ring:idx": true/false } - with coverage optimization applied
         let edgeExtensionEnabled = false; // Whether to apply edge extension
+        let coverageOptimizationEnabled = false; // Whether to apply coverage optimization
         let algorithmState = {}; // Legacy: for comparison with manual edits
+        let whiteRingStrokeWidth = 1.0; // White ring decoration stroke width (configurable)
         let algorithmStats = null; // Algorithm execution statistics
 
-        const RADIAL_COUNT = 120; // 120 radial lines (every 3°)
+        const RADIAL_COUNT = 240; // 240 radial lines (every 1.5°)
+        const RADIAL_ANGLE = 360 / RADIAL_COUNT; // Degrees per sector (1.5°)
         const RING_INTERVAL = 0.5; // Ring every 0.5 units
         const maxRadius = Math.sqrt(2) * moduleCount / 2;
         const RING_COUNT = Math.ceil(maxRadius / RING_INTERVAL);
+
+        // Coverage detection thresholds
+        const MIN_BLACK_COVERAGE = 0.75; // Black modules must have >= 75% coverage
+        const MAX_WHITE_COVERAGE = 0.25; // White modules must have <= 25% coverage
 
         // Initialize base state
         function initializeBaseState() {
@@ -376,6 +408,61 @@
         const globalDefs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
         globalDefs.setAttribute('id', 'global-defs');
         svg.appendChild(globalDefs);
+
+        // Create mask for white rings - only show where algorithm layer has data
+        function createWhiteRingMask() {
+            // Remove old mask if exists
+            const oldMask = document.getElementById('white-ring-mask');
+            if (oldMask) oldMask.remove();
+
+            const mask = document.createElementNS('http://www.w3.org/2000/svg', 'mask');
+            mask.setAttribute('id', 'white-ring-mask');
+
+            // Start with all hidden (black background)
+            const background = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            background.setAttribute('x', -100);
+            background.setAttribute('y', -100);
+            background.setAttribute('width', moduleCount + 200);
+            background.setAttribute('height', moduleCount + 200);
+            background.setAttribute('fill', 'black');
+            mask.appendChild(background);
+
+            // Only show regions where algorithm layer has data
+            if (Object.keys(sectorColors).length === 0) {
+                // No algorithm data, mask stays black (nothing visible)
+                globalDefs.appendChild(mask);
+                return;
+            }
+
+            // Choose data source based on optimization toggles
+            let dataSource = sectorColors;
+            if (coverageOptimizationEnabled) {
+                dataSource = sectorColorsOptimized;
+            } else if (edgeExtensionEnabled) {
+                dataSource = sectorColorsWithEdge;
+            }
+
+            // Draw white sectors for all algorithm data (both black and white sectors)
+            for (const [sectorId, color] of Object.entries(dataSource)) {
+                // Parse sector ID: "radial:idx|ring:idx"
+                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
+
+                // Create sector path in mask (white = visible)
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', createCompleteSectorPath(radialIndex, ringIndex));
+                path.setAttribute('fill', 'white'); // White in mask = visible
+                path.setAttribute('stroke', 'none');
+
+                mask.appendChild(path);
+            }
+
+            globalDefs.appendChild(mask);
+            console.log('[White Ring Mask] Created mask with', Object.keys(dataSource).length, 'sectors');
+        }
 
         // Module layer (for finder patterns, alignment patterns, etc.)
         const moduleLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -411,7 +498,7 @@
         // Layer 3: Algorithm annular layer (green, fully opaque)
         const algorithmDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         algorithmDisplayLayer.setAttribute('id', 'layer-3-algorithm');
-        algorithmDisplayLayer.setAttribute('opacity', '1'); // Fully opaque
+        algorithmDisplayLayer.setAttribute('opacity', '0.5'); // Semi-transparent to show guide lines
         svg.appendChild(algorithmDisplayLayer);
 
         // Layer 4: White ring decoration layer (on top of algorithm layer)
@@ -481,13 +568,13 @@
             }
         }
 
-        // Draw radial lines (every 3 degrees, 120 total)
+        // Draw radial lines
         function drawRadialLines() {
             radialLayer.innerHTML = '';
 
             const maxRadius = Math.sqrt(2) * moduleCount / 2;
 
-            for (let degree = 0; degree < 360; degree += 3) { // Every 3 degrees
+            for (let degree = 0; degree < 360; degree += RADIAL_ANGLE) {
                 const angle = degree * Math.PI / 180; // Convert to radians
                 const x2 = center.x + maxRadius * Math.cos(angle);
                 const y2 = center.y + maxRadius * Math.sin(angle);
@@ -513,32 +600,142 @@
             radialLayer.appendChild(centerDot);
         }
 
-        // Draw white rings (overlay circles with white stroke)
+        // Draw white rings - only on sectors with algorithm data (intersection)
         function drawWhiteRings() {
             whiteRingLayer.innerHTML = '';
 
-            const maxRadius = Math.sqrt(2) * moduleCount / 2; // Diagonal distance
+            // No mask needed - we draw arcs directly
+            whiteRingLayer.removeAttribute('mask');
 
-            for (let r = 0.5; r <= maxRadius; r += 0.5) {
-                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                circle.setAttribute('cx', center.x);
-                circle.setAttribute('cy', center.y);
-                circle.setAttribute('r', r);
-                circle.setAttribute('fill', 'none');
-                circle.setAttribute('stroke', 'white');
-                circle.setAttribute('stroke-width', '2');
-                circle.setAttribute('vector-effect', 'non-scaling-stroke');
-                circle.setAttribute('opacity', '0.8');
-                whiteRingLayer.appendChild(circle);
+            // Check if algorithm has data
+            if (Object.keys(sectorColors).length === 0) {
+                console.log('[drawWhiteRings] No algorithm data, skipping white rings');
+                return;
             }
+
+            // Choose data source based on optimization toggles
+            let dataSource = sectorColors;
+            let sourceLabel = 'base';
+            if (coverageOptimizationEnabled) {
+                dataSource = sectorColorsOptimized;
+                sourceLabel = 'optimized';
+            } else if (edgeExtensionEnabled) {
+                dataSource = sectorColorsWithEdge;
+                sourceLabel = 'edge-extended';
+            }
+
+            console.log(`[drawWhiteRings] Using data source: ${sourceLabel}, total sectors: ${Object.keys(dataSource).length}`);
+
+            // Group sectors by ring index for efficient drawing
+            const ringMap = new Map(); // ringIndex -> Set of radialIndices
+
+            for (const [sectorId, color] of Object.entries(dataSource)) {
+                const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                if (!match) continue;
+
+                const radialIndex = parseInt(match[1]);
+                const ringIndex = parseInt(match[2]);
+
+                if (!ringMap.has(ringIndex)) {
+                    ringMap.set(ringIndex, new Set());
+                }
+                ringMap.get(ringIndex).add(radialIndex);
+            }
+
+            // Draw white ring arcs for each ring
+            let arcCount = 0;
+            console.log(`[drawWhiteRings] Processing ${ringMap.size} rings`);
+
+            for (const [ringIndex, radialSet] of ringMap.entries()) {
+                const radius = (ringIndex + 0.5) * RING_INTERVAL; // Center of ring
+
+                // Convert radial indices to sorted array for continuous arc detection
+                const radialIndices = Array.from(radialSet).sort((a, b) => a - b);
+
+                console.log(`[drawWhiteRings] Ring ${ringIndex}: ${radialIndices.length} sectors, radius=${radius.toFixed(2)}`);
+
+                // Find continuous arc segments
+                const arcSegments = [];
+                let segmentStart = radialIndices[0];
+                let segmentEnd = radialIndices[0];
+
+                for (let i = 1; i < radialIndices.length; i++) {
+                    const current = radialIndices[i];
+                    const prev = radialIndices[i - 1];
+
+                    if (current === prev + 1) {
+                        // Continue current segment
+                        segmentEnd = current;
+                    } else {
+                        // Start new segment
+                        arcSegments.push({ start: segmentStart, end: segmentEnd });
+                        segmentStart = current;
+                        segmentEnd = current;
+                    }
+                }
+                // Add last segment
+                arcSegments.push({ start: segmentStart, end: segmentEnd });
+
+                // Check if first and last segments are continuous (wrap around)
+                if (arcSegments.length > 1) {
+                    const first = arcSegments[0];
+                    const last = arcSegments[arcSegments.length - 1];
+                    if (first.start === 0 && last.end === RADIAL_COUNT - 1) {
+                        // Merge wrapped segments
+                        arcSegments[0].start = last.start;
+                        arcSegments.pop();
+                        console.log(`[drawWhiteRings] Merged wrap-around segment`);
+                    }
+                }
+
+                console.log(`[drawWhiteRings] Ring ${ringIndex}: ${arcSegments.length} arc segments`);
+
+                // Draw each arc segment
+                for (const segment of arcSegments) {
+                    const startAngle = segment.start * RADIAL_ANGLE;
+                    const endAngle = (segment.end + 1) * RADIAL_ANGLE;
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+
+                    // Create arc path
+                    const a1 = startAngle * Math.PI / 180;
+                    const a2 = endAngle * Math.PI / 180;
+                    const x1 = center.x + radius * Math.cos(a1);
+                    const y1 = center.y + radius * Math.sin(a1);
+                    const x2 = center.x + radius * Math.cos(a2);
+                    const y2 = center.y + radius * Math.sin(a2);
+
+                    // Determine if this is a large arc (> 180 degrees)
+                    const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
+
+                    const pathData = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius.toFixed(2)} ${radius.toFixed(2)} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+
+                    path.setAttribute('d', pathData);
+                    path.setAttribute('fill', 'none');
+                    path.setAttribute('stroke', 'white');
+                    path.setAttribute('stroke-width', whiteRingStrokeWidth.toString());
+                    path.setAttribute('vector-effect', 'non-scaling-stroke');
+                    path.setAttribute('opacity', '0.8');
+                    path.setAttribute('stroke-linecap', 'round');
+
+                    whiteRingLayer.appendChild(path);
+                    arcCount++;
+
+                    if (arcCount <= 5) {
+                        console.log(`[drawWhiteRings] Arc ${arcCount}: ring=${ringIndex}, sectors=${segment.start}-${segment.end}, angles=${startAngle.toFixed(1)}°-${endAngle.toFixed(1)}°, path=${pathData.substring(0, 80)}...`);
+                    }
+                }
+            }
+
+            console.log(`[drawWhiteRings] ✅ Drew ${arcCount} arc segments from ${ringMap.size} rings`);
         }
 
         // ========== ALGORITHM: Automatic Sector-Ring Conversion ==========
 
         // Create a complete sector (annular segment) path - NO grid clipping
         function createCompleteSectorPath(radialIndex, ringIndex) {
-            const angle1 = radialIndex * 3 * Math.PI / 180;
-            const angle2 = (radialIndex + 1) * 3 * Math.PI / 180;
+            const angle1 = radialIndex * RADIAL_ANGLE * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * RADIAL_ANGLE * Math.PI / 180;
             const r1 = ringIndex * RING_INTERVAL;
             const r2 = (ringIndex + 1) * RING_INTERVAL;
 
@@ -579,8 +776,8 @@
             // Check angle range
             let angle = Math.atan2(dy, dx) * 180 / Math.PI;
             if (angle < 0) angle += 360;
-            const a1 = radialIndex * 3;
-            const a2 = (radialIndex + 1) * 3;
+            const a1 = radialIndex * RADIAL_ANGLE;
+            const a2 = (radialIndex + 1) * RADIAL_ANGLE;
 
             return angle >= a1 && angle < a2;
         }
@@ -623,13 +820,16 @@
             // Search nearby rings (±1 from cell center ring)
             const centerRing = Math.floor(cellRadius / RING_INTERVAL);
             for (let ring = Math.max(0, centerRing - 1); ring <= Math.min(maxRing, centerRing + 2); ring++) {
-                // Search nearby radials (±2 from cell center radial)
-                const centerRadial = Math.floor(cellAngle / 3);
-                for (let radial = centerRadial - 2; radial <= centerRadial + 2; radial++) {
-                    const normalizedRadial = ((radial % 120) + 120) % 120;
+                // Search nearby radials (expand search range for smaller sectors)
+                const searchRange = Math.ceil(3 / RADIAL_ANGLE * 2); // At least ±3 degrees coverage
+                const centerRadial = Math.floor(cellAngle / RADIAL_ANGLE);
+                for (let radial = centerRadial - searchRange; radial <= centerRadial + searchRange; radial++) {
+                    const normalizedRadial = ((radial % RADIAL_COUNT) + RADIAL_COUNT) % RADIAL_COUNT;
 
-                    const overlapArea = calculateOverlapArea(gridRow, gridCol, normalizedRadial, ring, 50);
-                    if (overlapArea > 0.001) { // Threshold to avoid floating point noise
+                    // Increase sampling for smaller sectors
+                    const samplePoints = Math.max(50, Math.ceil(100 / RADIAL_ANGLE));
+                    const overlapArea = calculateOverlapArea(gridRow, gridCol, normalizedRadial, ring, samplePoints);
+                    if (overlapArea > 0.0005) { // Lower threshold for smaller sectors
                         const cellId = `grid:${gridRow},${gridCol}|radial:${normalizedRadial}|ring:${ring}`;
                         overlaps.push({
                             cellId,
@@ -651,8 +851,8 @@
             // Determine bounding box of the sector
             const r1 = ringIndex * RING_INTERVAL;
             const r2 = (ringIndex + 1) * RING_INTERVAL;
-            const a1 = radialIndex * 3 * Math.PI / 180;
-            const a2 = (radialIndex + 1) * 3 * Math.PI / 180;
+            const a1 = radialIndex * RADIAL_ANGLE * Math.PI / 180;
+            const a2 = (radialIndex + 1) * RADIAL_ANGLE * Math.PI / 180;
 
             // Calculate sector bounding box
             const points = [
@@ -670,8 +870,10 @@
             // Check each grid cell in bounding box
             for (let row = minRow; row <= maxRow; row++) {
                 for (let col = minCol; col <= maxCol; col++) {
-                    const overlapArea = calculateOverlapArea(row, col, radialIndex, ringIndex, 50);
-                    if (overlapArea > 0.001) {
+                    // Increase sampling for smaller sectors
+                    const samplePoints = Math.max(50, Math.ceil(100 / RADIAL_ANGLE));
+                    const overlapArea = calculateOverlapArea(row, col, radialIndex, ringIndex, samplePoints);
+                    if (overlapArea > 0.0005) { // Lower threshold for smaller sectors
                         overlaps.push({
                             gridRow: row,
                             gridCol: col,
@@ -746,8 +948,8 @@
         // Helper: Check if a sector is an edge sector (partially inside and partially outside QR rectangular boundary)
         // A sector is "edge" if some vertices are inside [0, moduleCount] and some are outside
         function isEdgeSector(radialIndex, ringIndex) {
-            const angle1 = radialIndex * 3 * Math.PI / 180;
-            const angle2 = (radialIndex + 1) * 3 * Math.PI / 180;
+            const angle1 = radialIndex * RADIAL_ANGLE * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * RADIAL_ANGLE * Math.PI / 180;
             const r1 = ringIndex * RING_INTERVAL;
             const r2 = (ringIndex + 1) * RING_INTERVAL;
 
@@ -889,6 +1091,12 @@
             let edgeModifications = 0;
             let edgeSectorCount = 0;
             let candidateCount = 0;
+            let hasBlackOnly = 0;
+            let hasWhiteOnly = 0;
+            let hasBoth = 0;
+            let hasNeither = 0;
+            let edgeBlackInMain = 0;
+            let edgeWhiteInMain = 0;
 
             // Process all sectors
             for (const [sectorId, color] of Object.entries(sectorColors)) {
@@ -904,13 +1112,26 @@
 
                 edgeSectorCount++;
 
+                // Track edge sector color in main algorithm
+                if (color) {
+                    edgeBlackInMain++;
+                } else {
+                    edgeWhiteInMain++;
+                }
+
                 // Get overlapping grids to check conditions
                 const overlappingGrids = findOverlappingGridCells(radialIndex, ringIndex);
                 let hasBlackModule = false;
                 let hasWhiteModule = false;
+                const moduleDetails = [];
 
                 for (const overlap of overlappingGrids) {
                     const { gridRow, gridCol } = overlap;
+
+                    // Skip modules outside QR boundary (only check modules within [0, moduleCount-1])
+                    if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) {
+                        continue;
+                    }
 
                     // Skip special regions
                     if (isInFinderPatternRegion(gridRow, gridCol)) continue;
@@ -920,12 +1141,37 @@
                     const isMasked = isModuleMaskedByLayer(gridRow, gridCol);
                     const isBlack = isMasked ? false : (baseModuleState[`${gridRow},${gridCol}`] || false);
 
+                    moduleDetails.push({
+                        row: gridRow,
+                        col: gridCol,
+                        isBlack: isBlack,
+                        isMasked: isMasked
+                    });
+
                     if (isBlack) {
                         hasBlackModule = true;
                     } else {
                         hasWhiteModule = true;
                     }
                 }
+
+                // Categorize edge sectors by module coverage
+                let category = '';
+                if (hasBlackModule && !hasWhiteModule) {
+                    hasBlackOnly++;
+                    category = 'Black only';
+                } else if (!hasBlackModule && hasWhiteModule) {
+                    hasWhiteOnly++;
+                    category = 'White only';
+                } else if (hasBlackModule && hasWhiteModule) {
+                    hasBoth++;
+                    category = 'Both black and white';
+                } else {
+                    hasNeither++;
+                    category = 'Neither';
+                }
+
+                // Detailed logging disabled - use summary statistics instead
 
                 // Apply edge rule: if edge sector + has black + NO white modules → force BLACK
                 // Only extend when sector only covers black modules (plus boundary-outside area)
@@ -948,17 +1194,626 @@
             console.log(`[Edge Extension] ✅ Completed in ${elapsed}s`);
             console.log(`[Edge Extension] Total sectors: ${Object.keys(sectorColors).length}`);
             console.log(`[Edge Extension] Edge sectors (crossing boundary): ${edgeSectorCount}`);
+            console.log(`[Edge Extension] Edge sectors in main algorithm:`);
+            console.log(`  - BLACK in main: ${edgeBlackInMain}`);
+            console.log(`  - WHITE in main: ${edgeWhiteInMain}`);
+            console.log(`[Edge Extension] Edge sector module coverage:`);
+            console.log(`  - Black only (no white): ${hasBlackOnly}`);
+            console.log(`  - White only (no black): ${hasWhiteOnly}`);
+            console.log(`  - Both black and white: ${hasBoth}`);
+            console.log(`  - Neither (only outside QR): ${hasNeither}`);
             console.log(`[Edge Extension] Candidates (black only, no white): ${candidateCount}`);
             console.log(`[Edge Extension] Modified (WHITE→BLACK): ${edgeModifications}`);
 
             return extendedColors;
         }
 
-        // Check if a grid cell violates the 25% constraint
+        // Helper: Calculate coverage of a module given a sector color configuration
+        function calculateModuleCoverage(row, col, sectorColorConfig, sampleSize = 10) {
+            const blackSectorsSet = new Set();
+            for (const [sectorId, color] of Object.entries(sectorColorConfig)) {
+                if (color) blackSectorsSet.add(sectorId);
+            }
+
+            let coveredCount = 0;
+            const totalCount = sampleSize * sampleSize;
+
+            for (let i = 0; i < sampleSize; i++) {
+                for (let j = 0; j < sampleSize; j++) {
+                    const x = col + (i + 0.5) / sampleSize;
+                    const y = row + (j + 0.5) / sampleSize;
+                    if (isPointCovered(x, y, blackSectorsSet)) {
+                        coveredCount++;
+                    }
+                }
+            }
+
+            return coveredCount / totalCount;
+        }
+
+        // Apply coverage optimization: Greedy algorithm with testing validation
+        // For each problematic black module, try painting sectors (largest coverage first)
+        // and test if it breaks neighboring modules' coverage constraints
+        function applyCoverageOptimization() {
+            console.log('[Coverage Opt] 🚀 Starting greedy optimization with testing...');
+            const startTime = performance.now();
+
+            // Configuration
+            const MIN_FIXABLE_COVERAGE = 0.50; // 跳过覆盖率太低的（<50%很难修复）
+            const MAX_WHITE_COVERAGE_TO_FIX = 0.75; // 跳过覆盖率太高的（>75%很难修复）
+            const MIN_CANDIDATE_SECTORS = 1; // 至少要有1个候选扇区
+            const MAX_ITERATIONS = 5; // 最大迭代次数
+            const sampleSize = 10;
+
+            // Debug configuration: track all problematic modules in detail
+            const DEBUG_ALL_ERRORS = true; // Set to false to disable detailed debugging
+            const DEBUG_RADIUS = 1; // Track neighbors within this radius
+
+            // Track which modules were attempted but failed to fix
+            const failedToFixModules = new Set();
+
+            // Helper: Check if module should be debugged (for neighbors)
+            const shouldDebug = (row, col, targetRow, targetCol) => {
+                if (!DEBUG_ALL_ERRORS) return false;
+                const rowDist = Math.abs(row - targetRow);
+                const colDist = Math.abs(col - targetCol);
+                return rowDist <= DEBUG_RADIUS && colDist <= DEBUG_RADIUS;
+            };
+
+            // Start with edge-extended results
+            const optimizedColors = { ...sectorColorsWithEdge };
+
+            // Global statistics
+            let totalIterations = 0;
+            let globalTotalModifications = 0;
+            let globalTotalFixed = 0;
+
+            // Multi-round iteration
+            for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
+                totalIterations = iteration;
+                console.log(`\n[Coverage Opt] ═══ ITERATION ${iteration}/${MAX_ITERATIONS} ═══`);
+
+                let iterationModifications = 0;
+                let iterationFixed = 0;
+
+                // Step 1: Re-detect problematic modules (based on current state)
+                const problematicBlackModules = [];
+                const problematicWhiteModules = [];
+
+                for (let row = 0; row < moduleCount; row++) {
+                    for (let col = 0; col < moduleCount; col++) {
+                        // Skip special regions
+                        if (isInFinderPatternRegion(row, col)) continue;
+                        if (isInAlignmentPatternInner(row, col)) continue;
+                        if (isModuleMaskedByLayer(row, col)) continue;
+
+                        const isBlack = baseModuleState[`${row},${col}`] || false;
+                        const coverage = calculateModuleCoverage(row, col, optimizedColors, sampleSize);
+
+                        if (isBlack && coverage < MIN_BLACK_COVERAGE) {
+                            problematicBlackModules.push({ row, col, coverage });
+                        } else if (!isBlack && coverage > MAX_WHITE_COVERAGE) {
+                            problematicWhiteModules.push({ row, col, coverage });
+                        }
+                    }
+                }
+
+                console.log(`[Coverage Opt] Found ${problematicBlackModules.length} black + ${problematicWhiteModules.length} white problematic modules`);
+
+                // Early exit if no problematic modules
+                if (problematicBlackModules.length === 0 && problematicWhiteModules.length === 0) {
+                    console.log(`[Coverage Opt] ✅ All modules fixed!`);
+                    break;
+                }
+
+                // Step 1.5: Sort by priority
+                problematicBlackModules.sort((a, b) => b.coverage - a.coverage);
+                problematicWhiteModules.sort((a, b) => a.coverage - b.coverage);
+
+                // Step 2: For each problematic BLACK module, try adding black sectors
+                console.log(`[Coverage Opt] --- Phase 1: Fixing BLACK modules (WHITE→BLACK) ---`);
+                let blackModificationsThisPhase = 0;
+                let blackFixedThisPhase = 0;
+                let blackSkippedThisPhase = 0;
+
+                for (const module of problematicBlackModules) {
+                    const { row, col, coverage: initialCoverage } = module;
+                    let wasFixed = false;
+
+                    // Skip unfixable modules
+                    if (initialCoverage < MIN_FIXABLE_COVERAGE) {
+                        blackSkippedThisPhase++;
+                        continue;
+                    }
+
+                    // Find all sectors that overlap with this module
+                    const overlappingSectors = findOverlappingSectors(row, col);
+
+                    // Construct candidate sectors
+                    const candidateSectors = overlappingSectors
+                        .filter(s => s && s.radialIndex !== undefined && s.ringIndex !== undefined)
+                        .map(s => {
+                            const sectorId = `radial:${s.radialIndex}|ring:${s.ringIndex}`;
+                            return {
+                                sectorId,
+                                coverageOfModule: s.overlapArea / 1.0,
+                                radialIndex: s.radialIndex,
+                                ringIndex: s.ringIndex
+                            };
+                        })
+                        .filter(s => !optimizedColors[s.sectorId]) // Only white sectors
+                        .sort((a, b) => b.coverageOfModule - a.coverageOfModule);
+
+                    // Skip if no candidates
+                    if (candidateSectors.length < MIN_CANDIDATE_SECTORS) {
+                        blackSkippedThisPhase++;
+                        continue;
+                    }
+
+                    // Track rejection reasons for debugging
+                    const rejectionReasons = [];
+
+                    // Step 3: Greedy trial - try each candidate from largest to smallest
+                    for (const candidate of candidateSectors) {
+                        const { sectorId } = candidate;
+
+                        if (!sectorId || typeof sectorId !== 'string') continue;
+
+                        // Temporarily paint this sector black
+                        optimizedColors[sectorId] = true;
+
+                        // Test: Get all modules affected by this sector
+                        const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                        if (!match) {
+                            optimizedColors[sectorId] = false;
+                            continue;
+                        }
+                        const radialIndex = parseInt(match[1]);
+                        const ringIndex = parseInt(match[2]);
+                        const affectedCells = findOverlappingGridCells(radialIndex, ringIndex);
+
+                        let testPassed = true;
+                        let failedCell = null;
+                        const affectedDebugCells = [];
+
+                        // Check each affected module's coverage
+                        for (const cell of affectedCells) {
+                            const { gridRow, gridCol } = cell;
+
+                            if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
+                            if (isInFinderPatternRegion(gridRow, gridCol)) continue;
+                            if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
+                            if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+
+                            // CRITICAL: Skip the target module itself - we're trying to fix it!
+                            // It's OK if it's still below threshold, as long as we're making progress
+                            if (gridRow === row && gridCol === col) {
+                                continue;
+                            }
+
+                            const isModuleBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+                            const newCoverage = calculateModuleCoverage(gridRow, gridCol, optimizedColors, sampleSize);
+
+                            // Track affected cells for debugging
+                            if (shouldDebug(gridRow, gridCol)) {
+                                affectedDebugCells.push({ gridRow, gridCol, isModuleBlack, newCoverage });
+                            }
+
+                            // Test coverage constraints for OTHER modules (not the target)
+                            if (isModuleBlack && newCoverage < MIN_BLACK_COVERAGE) {
+                                testPassed = false;
+                                failedCell = { gridRow, gridCol, isModuleBlack, newCoverage, reason: `BLACK < ${MIN_BLACK_COVERAGE * 100}%` };
+                                break;
+                            }
+                            if (!isModuleBlack && newCoverage > MAX_WHITE_COVERAGE) {
+                                testPassed = false;
+                                failedCell = { gridRow, gridCol, isModuleBlack, newCoverage, reason: `WHITE > ${MAX_WHITE_COVERAGE * 100}%` };
+                                break;
+                            }
+                        }
+
+                        if (testPassed) {
+                            blackModificationsThisPhase++;
+                            const newCoverage = calculateModuleCoverage(row, col, optimizedColors, sampleSize);
+
+                            if (newCoverage >= MIN_BLACK_COVERAGE) {
+                                blackFixedThisPhase++;
+                                wasFixed = true;
+                                break;
+                            }
+                        } else {
+                            // Revert modification
+                            optimizedColors[sectorId] = false;
+                        }
+                    }
+                }
+
+                // Step 3: For each problematic WHITE module, try removing black sectors
+                console.log(`\n[Coverage Opt] --- Phase 2: Fixing WHITE modules (BLACK→WHITE) ---`);
+                let whiteModificationsThisPhase = 0;
+                let whiteFixedThisPhase = 0;
+                let whiteSkippedThisPhase = 0;
+
+                for (const module of problematicWhiteModules) {
+                    const { row, col, coverage: initialCoverage } = module;
+
+                    // Skip modules with too high coverage
+                    if (initialCoverage > MAX_WHITE_COVERAGE) {
+                        whiteSkippedThisPhase++;
+                        continue;
+                    }
+
+                    // Find all sectors that overlap with this module
+                    const overlappingSectors = findOverlappingSectors(row, col);
+
+                    // For white modules, filter for BLACK sectors to remove
+                    const candidateSectors = overlappingSectors
+                        .filter(s => s && s.radialIndex !== undefined && s.ringIndex !== undefined)
+                        .map(s => {
+                            const sectorId = `radial:${s.radialIndex}|ring:${s.ringIndex}`;
+                            return {
+                                sectorId,
+                                coverageOfModule: s.overlapArea / 1.0,
+                                radialIndex: s.radialIndex,
+                                ringIndex: s.ringIndex
+                            };
+                        })
+                        .filter(s => optimizedColors[s.sectorId]) // Only BLACK sectors
+                        .sort((a, b) => b.coverageOfModule - a.coverageOfModule);
+
+                    // Skip if no candidates
+                    if (candidateSectors.length < MIN_CANDIDATE_SECTORS) {
+                        whiteSkippedThisPhase++;
+                        continue;
+                    }
+
+                // Greedy trial - try removing each black sector from largest to smallest
+                for (const candidate of candidateSectors) {
+                    const { sectorId } = candidate;
+
+                    if (!sectorId || typeof sectorId !== 'string') {
+                        console.warn(`[Coverage Opt] Invalid sectorId:`, sectorId);
+                        continue;
+                    }
+
+                    // Temporarily erase this sector (BLACK→WHITE)
+                    const originalValue = optimizedColors[sectorId];
+                    delete optimizedColors[sectorId]; // Or set to false
+
+                    // Test: Get all modules affected by this sector
+                    const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                    if (!match) {
+                        console.warn(`[Coverage Opt] Invalid sectorId format: ${sectorId}`);
+                        optimizedColors[sectorId] = originalValue;
+                        continue;
+                    }
+                    const radialIndex = parseInt(match[1]);
+                    const ringIndex = parseInt(match[2]);
+                    const affectedCells = findOverlappingGridCells(radialIndex, ringIndex);
+
+                    let testPassed = true;
+
+                    // Check each affected module's coverage
+                    for (const cell of affectedCells) {
+                        const { gridRow, gridCol } = cell;
+
+                        // Skip out-of-bounds and special regions
+                        if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
+                        if (isInFinderPatternRegion(gridRow, gridCol)) continue;
+                        if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
+                        if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+
+                        // CRITICAL: Skip the target module itself - we're trying to fix it!
+                        // It's OK if it's still above threshold, as long as we're making progress
+                        if (gridRow === row && gridCol === col) {
+                            continue;
+                        }
+
+                        const isModuleBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+                        const newCoverage = calculateModuleCoverage(gridRow, gridCol, optimizedColors, sampleSize);
+
+                        // Test coverage constraints for OTHER modules (not the target)
+                        if (isModuleBlack && newCoverage < MIN_BLACK_COVERAGE) {
+                            testPassed = false;
+                            break;
+                        }
+                        if (!isModuleBlack && newCoverage > MAX_WHITE_COVERAGE) {
+                            testPassed = false;
+                            break;
+                        }
+                    }
+
+                    if (testPassed) {
+                        whiteModificationsThisPhase++;
+                        const newCoverage = calculateModuleCoverage(row, col, optimizedColors, sampleSize);
+
+                        if (newCoverage <= MAX_WHITE_COVERAGE) {
+                            whiteFixedThisPhase++;
+                            break;
+                        }
+                    } else {
+                        optimizedColors[sectorId] = originalValue;
+                    }
+                }
+                }
+
+                // Update iteration statistics
+                iterationModifications = blackModificationsThisPhase + whiteModificationsThisPhase;
+                iterationFixed = blackFixedThisPhase + whiteFixedThisPhase;
+                globalTotalModifications += iterationModifications;
+                globalTotalFixed += iterationFixed;
+
+                // Print iteration summary
+                console.log(`\n[Iter${iteration}] BLACK: ${blackFixedThisPhase} fixed | WHITE: ${whiteFixedThisPhase} fixed | Total: ${iterationFixed} fixed, ${iterationModifications} mods`);
+
+                // Convergence check
+                if (iterationFixed === 0) {
+                    console.log(`[Coverage Opt] No improvements, stopping.\n`);
+                    break;
+                }
+            } // End of iteration loop
+
+            const endTime = performance.now();
+            const elapsed = ((endTime - startTime) / 1000).toFixed(2);
+
+            console.log(`\n[Coverage Opt] ✅ COMPLETED in ${elapsed}s | ${totalIterations} iterations | ${globalTotalFixed} fixed | ${globalTotalModifications} mods\n`);
+
+            // Final detailed analysis of remaining errors
+            if (DEBUG_ALL_ERRORS) {
+                console.log(`\n${'='.repeat(80)}`);
+                console.log(`📋 详细错误分析 - 所有剩余问题模块`);
+                console.log(`${'='.repeat(80)}\n`);
+
+                const remainingBlackErrors = [];
+                const remainingWhiteErrors = [];
+
+                // Re-detect errors
+                for (let row = 0; row < moduleCount; row++) {
+                    for (let col = 0; col < moduleCount; col++) {
+                        if (isInFinderPatternRegion(row, col)) continue;
+                        if (isInAlignmentPatternInner(row, col)) continue;
+                        if (isModuleMaskedByLayer(row, col)) continue;
+
+                        const isBlack = baseModuleState[`${row},${col}`] || false;
+                        const coverage = calculateModuleCoverage(row, col, optimizedColors, sampleSize);
+
+                        if (isBlack && coverage < MIN_BLACK_COVERAGE) {
+                            remainingBlackErrors.push({ row, col, coverage });
+                        } else if (!isBlack && coverage > MAX_WHITE_COVERAGE) {
+                            remainingWhiteErrors.push({ row, col, coverage });
+                        }
+                    }
+                }
+
+                console.log(`剩余错误：${remainingBlackErrors.length} 黑色模块 + ${remainingWhiteErrors.length} 白色模块\n`);
+
+                // Analyze each BLACK error
+                remainingBlackErrors.forEach((error, index) => {
+                    const { row, col, coverage } = error;
+                    console.log(`${'─'.repeat(80)}`);
+                    console.log(`❌ 黑色模块 #${index + 1}: (${row},${col}) | 覆盖率: ${(coverage * 100).toFixed(1)}% (需要 ≥${MIN_BLACK_COVERAGE * 100}%)`);
+                    console.log(`${'─'.repeat(80)}`);
+
+                    // Get neighbors状态
+                    console.log(`\n周边模块 (3×3):`);
+                    for (let dr = -1; dr <= 1; dr++) {
+                        let line = '  ';
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = row + dr;
+                            const nc = col + dc;
+                            if (nr < 0 || nr >= moduleCount || nc < 0 || nc >= moduleCount) {
+                                line += '[OUT] ';
+                                continue;
+                            }
+                            if (isInFinderPatternRegion(nr, nc) || isInAlignmentPatternInner(nr, nc) || isModuleMaskedByLayer(nr, nc)) {
+                                line += '[MSK] ';
+                                continue;
+                            }
+                            const nIsBlack = baseModuleState[`${nr},${nc}`] || false;
+                            const nCov = calculateModuleCoverage(nr, nc, optimizedColors, sampleSize);
+                            const type = nIsBlack ? 'B' : 'W';
+                            const status = (nIsBlack && nCov < MIN_BLACK_COVERAGE) || (!nIsBlack && nCov > MAX_WHITE_COVERAGE) ? '❌' : '✅';
+                            if (dr === 0 && dc === 0) {
+                                line += `[★${type}${(nCov * 100).toFixed(0)}] `;
+                            } else {
+                                line += `[${type}${(nCov * 100).toFixed(0)}${status}] `;
+                            }
+                        }
+                        console.log(line);
+                    }
+
+                    // Get candidate sectors
+                    const overlappingSectors = findOverlappingSectors(row, col);
+                    const candidateSectors = overlappingSectors
+                        .filter(s => s && s.radialIndex !== undefined && s.ringIndex !== undefined)
+                        .map(s => {
+                            const sectorId = `radial:${s.radialIndex}|ring:${s.ringIndex}`;
+                            return {
+                                sectorId,
+                                coverageOfModule: s.overlapArea / 1.0,
+                                isBlack: optimizedColors[sectorId] || false
+                            };
+                        })
+                        .sort((a, b) => b.coverageOfModule - a.coverageOfModule);
+
+                    const whiteCandidates = candidateSectors.filter(s => !s.isBlack);
+                    console.log(`\n候选白色扇区（可涂黑）: ${whiteCandidates.length} 个`);
+                    whiteCandidates.slice(0, 5).forEach((c, i) => {
+                        console.log(`  ${i + 1}. ${c.sectorId} | 覆盖: ${(c.coverageOfModule * 100).toFixed(1)}%`);
+                    });
+
+                    // Test each candidate
+                    if (whiteCandidates.length > 0) {
+                        console.log(`\n测试结果:`);
+                        for (const candidate of whiteCandidates.slice(0, 3)) {
+                            const { sectorId } = candidate;
+
+                            // Temporarily apply
+                            const testColors = { ...optimizedColors };
+                            testColors[sectorId] = true;
+
+                            const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                            if (!match) continue;
+                            const radialIndex = parseInt(match[1]);
+                            const ringIndex = parseInt(match[2]);
+                            const affectedCells = findOverlappingGridCells(radialIndex, ringIndex);
+
+                            let reason = null;
+                            for (const cell of affectedCells) {
+                                const { gridRow, gridCol } = cell;
+                                if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
+                                if (isInFinderPatternRegion(gridRow, gridCol)) continue;
+                                if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
+                                if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+                                if (gridRow === row && gridCol === col) continue;
+
+                                const isModuleBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+                                const newCoverage = calculateModuleCoverage(gridRow, gridCol, testColors, sampleSize);
+
+                                if (isModuleBlack && newCoverage < MIN_BLACK_COVERAGE) {
+                                    reason = `会破坏 (${gridRow},${gridCol}): BLACK ${(newCoverage * 100).toFixed(1)}% < ${MIN_BLACK_COVERAGE * 100}%`;
+                                    break;
+                                }
+                                if (!isModuleBlack && newCoverage > MAX_WHITE_COVERAGE) {
+                                    reason = `会破坏 (${gridRow},${gridCol}): WHITE ${(newCoverage * 100).toFixed(1)}% > ${MAX_WHITE_COVERAGE * 100}%`;
+                                    break;
+                                }
+                            }
+
+                            if (reason) {
+                                console.log(`  ❌ ${sectorId}: ${reason}`);
+                            } else {
+                                const newCoverage = calculateModuleCoverage(row, col, testColors, sampleSize);
+                                console.log(`  ✅ ${sectorId}: 可应用！新覆盖率 ${(newCoverage * 100).toFixed(1)}%`);
+                            }
+                        }
+                    } else {
+                        console.log(`  ⚠️  无候选扇区（所有扇区都已涂黑）`);
+                    }
+
+                    console.log();
+                });
+
+                // Analyze each WHITE error (similar structure)
+                remainingWhiteErrors.forEach((error, index) => {
+                    const { row, col, coverage } = error;
+                    console.log(`${'─'.repeat(80)}`);
+                    console.log(`❌ 白色模块 #${index + 1}: (${row},${col}) | 覆盖率: ${(coverage * 100).toFixed(1)}% (需要 ≤${MAX_WHITE_COVERAGE * 100}%)`);
+                    console.log(`${'─'.repeat(80)}`);
+
+                    // Get neighbors
+                    console.log(`\n周边模块 (3×3):`);
+                    for (let dr = -1; dr <= 1; dr++) {
+                        let line = '  ';
+                        for (let dc = -1; dc <= 1; dc++) {
+                            const nr = row + dr;
+                            const nc = col + dc;
+                            if (nr < 0 || nr >= moduleCount || nc < 0 || nc >= moduleCount) {
+                                line += '[OUT] ';
+                                continue;
+                            }
+                            if (isInFinderPatternRegion(nr, nc) || isInAlignmentPatternInner(nr, nc) || isModuleMaskedByLayer(nr, nc)) {
+                                line += '[MSK] ';
+                                continue;
+                            }
+                            const nIsBlack = baseModuleState[`${nr},${nc}`] || false;
+                            const nCov = calculateModuleCoverage(nr, nc, optimizedColors, sampleSize);
+                            const type = nIsBlack ? 'B' : 'W';
+                            const status = (nIsBlack && nCov < MIN_BLACK_COVERAGE) || (!nIsBlack && nCov > MAX_WHITE_COVERAGE) ? '❌' : '✅';
+                            if (dr === 0 && dc === 0) {
+                                line += `[★${type}${(nCov * 100).toFixed(0)}] `;
+                            } else {
+                                line += `[${type}${(nCov * 100).toFixed(0)}${status}] `;
+                            }
+                        }
+                        console.log(line);
+                    }
+
+                    // Get candidate sectors (black sectors to remove)
+                    const overlappingSectors = findOverlappingSectors(row, col);
+                    const candidateSectors = overlappingSectors
+                        .filter(s => s && s.radialIndex !== undefined && s.ringIndex !== undefined)
+                        .map(s => {
+                            const sectorId = `radial:${s.radialIndex}|ring:${s.ringIndex}`;
+                            return {
+                                sectorId,
+                                coverageOfModule: s.overlapArea / 1.0,
+                                isBlack: optimizedColors[sectorId] || false
+                            };
+                        })
+                        .sort((a, b) => b.coverageOfModule - a.coverageOfModule);
+
+                    const blackCandidates = candidateSectors.filter(s => s.isBlack);
+                    console.log(`\n候选黑色扇区（可擦除）: ${blackCandidates.length} 个`);
+                    blackCandidates.slice(0, 5).forEach((c, i) => {
+                        console.log(`  ${i + 1}. ${c.sectorId} | 覆盖: ${(c.coverageOfModule * 100).toFixed(1)}%`);
+                    });
+
+                    // Test each candidate
+                    if (blackCandidates.length > 0) {
+                        console.log(`\n测试结果:`);
+                        for (const candidate of blackCandidates.slice(0, 3)) {
+                            const { sectorId } = candidate;
+
+                            // Temporarily remove
+                            const testColors = { ...optimizedColors };
+                            delete testColors[sectorId];
+
+                            const match = sectorId.match(/radial:(\d+)\|ring:(\d+)/);
+                            if (!match) continue;
+                            const radialIndex = parseInt(match[1]);
+                            const ringIndex = parseInt(match[2]);
+                            const affectedCells = findOverlappingGridCells(radialIndex, ringIndex);
+
+                            let reason = null;
+                            for (const cell of affectedCells) {
+                                const { gridRow, gridCol } = cell;
+                                if (gridRow < 0 || gridRow >= moduleCount || gridCol < 0 || gridCol >= moduleCount) continue;
+                                if (isInFinderPatternRegion(gridRow, gridCol)) continue;
+                                if (isInAlignmentPatternInner(gridRow, gridCol)) continue;
+                                if (isModuleMaskedByLayer(gridRow, gridCol)) continue;
+                                if (gridRow === row && gridCol === col) continue;
+
+                                const isModuleBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
+                                const newCoverage = calculateModuleCoverage(gridRow, gridCol, testColors, sampleSize);
+
+                                if (isModuleBlack && newCoverage < MIN_BLACK_COVERAGE) {
+                                    reason = `会破坏 (${gridRow},${gridCol}): BLACK ${(newCoverage * 100).toFixed(1)}% < ${MIN_BLACK_COVERAGE * 100}%`;
+                                    break;
+                                }
+                                if (!isModuleBlack && newCoverage > MAX_WHITE_COVERAGE) {
+                                    reason = `会破坏 (${gridRow},${gridCol}): WHITE ${(newCoverage * 100).toFixed(1)}% > ${MAX_WHITE_COVERAGE * 100}%`;
+                                    break;
+                                }
+                            }
+
+                            if (reason) {
+                                console.log(`  ❌ ${sectorId}: ${reason}`);
+                            } else {
+                                const newCoverage = calculateModuleCoverage(row, col, testColors, sampleSize);
+                                console.log(`  ✅ ${sectorId}: 可应用！新覆盖率 ${(newCoverage * 100).toFixed(1)}%`);
+                            }
+                        }
+                    } else {
+                        console.log(`  ⚠️  无候选扇区（所有扇区都是白色）`);
+                    }
+
+                    console.log();
+                });
+
+                console.log(`${'='.repeat(80)}`);
+                console.log(`📋 分析完成`);
+                console.log(`${'='.repeat(80)}\n`);
+            }
+
+            return optimizedColors;
+        }
+
+        // Check if a grid cell violates the white coverage constraint
         function checkGridConstraint(gridRow, gridCol) {
             const isGridBlack = baseModuleState[`${gridRow},${gridCol}`] || false;
             const gridArea = 1.0;
-            const maxChange = gridArea * 0.25;
+            const maxChange = gridArea * MAX_WHITE_COVERAGE;
 
             const overlappingSectors = findOverlappingSectors(gridRow, gridCol);
 
@@ -986,6 +1841,96 @@
             };
         }
 
+        // Save algorithm results to localStorage
+        function saveAlgorithmResults() {
+            try {
+                const data = {
+                    sectorColors,
+                    sectorColorsWithEdge,
+                    sectorColorsOptimized,
+                    algorithmStats,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem(STORAGE_KEY_ALGORITHM, JSON.stringify(data));
+                console.log('[Algorithm Cache] ✅ Saved to localStorage');
+            } catch (e) {
+                console.error('[Algorithm Cache] Failed to save:', e);
+            }
+        }
+
+        // Load algorithm results from localStorage
+        function loadAlgorithmResults() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY_ALGORITHM);
+                if (!saved) {
+                    console.log('[Algorithm Cache] No cached results found');
+                    return false;
+                }
+
+                const data = JSON.parse(saved);
+                sectorColors = data.sectorColors || {};
+                sectorColorsWithEdge = data.sectorColorsWithEdge || {};
+                sectorColorsOptimized = data.sectorColorsOptimized || {};
+                algorithmStats = data.algorithmStats || null;
+
+                const age = Date.now() - (data.timestamp || 0);
+                const ageMinutes = Math.floor(age / 60000);
+
+                console.log(`[Algorithm Cache] ✅ Loaded cached results (${ageMinutes} minutes old)`);
+                console.log(`[Algorithm Cache] Sectors: ${Object.keys(sectorColors).length}`);
+
+                return true;
+            } catch (e) {
+                console.error('[Algorithm Cache] Failed to load:', e);
+                return false;
+            }
+        }
+
+        // Save all checkbox states to localStorage
+        function saveCheckboxStates() {
+            try {
+                const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+                const states = {};
+                checkboxes.forEach(cb => {
+                    if (cb.id) {
+                        states[cb.id] = cb.checked;
+                    }
+                });
+                localStorage.setItem(STORAGE_KEY_CHECKBOXES, JSON.stringify(states));
+                console.log('[Checkbox Cache] ✅ Saved states:', Object.keys(states).length, 'checkboxes');
+            } catch (e) {
+                console.error('[Checkbox Cache] Failed to save:', e);
+            }
+        }
+
+        // Load all checkbox states from localStorage
+        function loadCheckboxStates() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY_CHECKBOXES);
+                if (!saved) {
+                    console.log('[Checkbox Cache] No cached states found');
+                    return false;
+                }
+
+                const states = JSON.parse(saved);
+                let restoredCount = 0;
+
+                for (const [id, checked] of Object.entries(states)) {
+                    const checkbox = document.getElementById(id);
+                    if (checkbox && checkbox.type === 'checkbox') {
+                        checkbox.checked = checked;
+                        restoredCount++;
+                    }
+                }
+
+                console.log(`[Checkbox Cache] ✅ Restored ${restoredCount} checkbox states`);
+                return true;
+            } catch (e) {
+                console.error('[Checkbox Cache] Failed to load:', e);
+                return false;
+            }
+        }
+
         // SIMPLIFIED ALGORITHM: Pure sector-based conversion using Monte Carlo
         async function runConversionAlgorithm() {
             console.log('[Algorithm] 🚀 Starting PURE SECTOR-BASED conversion...');
@@ -998,14 +1943,14 @@
 
             const maxRadius = Math.sqrt(2) * moduleCount / 2;
             const maxRing = Math.ceil(maxRadius / RING_INTERVAL);
-            const totalSectors = 120 * maxRing;
+            const totalSectors = RADIAL_COUNT * maxRing;
 
             console.log('[Algorithm] Processing sectors (radial × ring)...');
             let processed = 0;
 
             // Iterate through all sectors (radial, ring) - NO grid subdivision
             for (let ring = 0; ring <= maxRing; ring++) {
-                for (let radial = 0; radial < 120; radial++) {
+                for (let radial = 0; radial < RADIAL_COUNT; radial++) {
                     // Calculate color for this complete sector
                     const color = calculateSectorColor_Simplified(radial, ring);
                     const sectorId = `radial:${radial}|ring:${ring}`;
@@ -1050,6 +1995,19 @@
 
             // Automatically run edge extension
             sectorColorsWithEdge = applyEdgeExtension();
+
+            // Automatically run coverage optimization
+            try {
+                console.log('[Main] Running coverage optimization...');
+                sectorColorsOptimized = applyCoverageOptimization();
+                console.log('[Main] Coverage optimization completed');
+            } catch (error) {
+                console.error('[Main] Coverage optimization failed:', error);
+                sectorColorsOptimized = { ...sectorColorsWithEdge }; // Fallback
+            }
+
+            // Save results to cache
+            saveAlgorithmResults();
 
             return algorithmStats;
         }
@@ -1305,9 +2263,16 @@
                 return;
             }
 
-            // Choose data source based on edge extension toggle
-            const dataSource = edgeExtensionEnabled ? sectorColorsWithEdge : sectorColors;
-            const sourceLabel = edgeExtensionEnabled ? '(with edge extension)' : '(main algorithm)';
+            // Choose data source based on optimization toggles
+            let dataSource = sectorColors;
+            let sourceLabel = '(main algorithm)';
+            if (coverageOptimizationEnabled) {
+                dataSource = sectorColorsOptimized;
+                sourceLabel = '(with coverage optimization)';
+            } else if (edgeExtensionEnabled) {
+                dataSource = sectorColorsWithEdge;
+                sourceLabel = '(with edge extension)';
+            }
 
             console.log(`[drawAlgorithmDisplay] Drawing from: ${sourceLabel}`);
 
@@ -1368,14 +2333,52 @@
             if (angle < 0) angle += 360;
 
             // Calculate sector indices directly
-            const radialIndex = Math.floor(angle / 3); // 3 degrees per sector
+            const radialIndex = Math.floor(angle / RADIAL_ANGLE);
             const ringIndex = Math.floor(r / RING_INTERVAL);
 
             return { radialIndex, ringIndex };
         }
 
         // Check if a point is covered - O(1) with Set lookup
+        // Check if a point is covered by white ring decoration
+        function isPointInWhiteRing(x, y) {
+            // Check if white ring layer is enabled
+            const whiteRingEnabled = document.getElementById('show-layer-4-decoration').checked;
+            if (!whiteRingEnabled) return false;
+
+            // Check if point is in a region that white rings should skip
+            const col = Math.floor(x);
+            const row = Math.floor(y);
+
+            // White rings skip: finder patterns, alignment inner 3x3, mask layer
+            if (isInFinderPatternRegion(row, col) ||
+                isInAlignmentPatternInner(row, col) ||
+                isModuleMaskedByLayer(row, col)) {
+                return false;
+            }
+
+            // Calculate distance from center
+            const dx = x - center.x;
+            const dy = y - center.y;
+            const radius = Math.sqrt(dx * dx + dy * dy);
+
+            // White rings are drawn at intervals of RING_INTERVAL (0.5)
+            // with stroke-width of 1, but we use a narrower detection zone
+            // to avoid over-blocking (since stroke-width=1 would cover everything)
+            const ringIndex = Math.round(radius / RING_INTERVAL);
+            const ringRadius = ringIndex * RING_INTERVAL;
+            const distanceToRing = Math.abs(radius - ringRadius);
+
+            // Use conservative threshold: only block if very close to ring centerline
+            // This represents the "core" of the white ring decoration
+            const RING_DETECTION_THRESHOLD = 0.15; // ~30% of stroke-width
+            return distanceToRing <= RING_DETECTION_THRESHOLD;
+        }
+
         function isPointCovered(x, y, algorithmSectorsSet) {
+            // White rings now only show where algorithm data exists (intersection),
+            // so they don't affect coverage detection anymore
+
             const { radialIndex, ringIndex } = getSectorIndicesForPoint(x, y);
             const sectorId = `radial:${radialIndex}|ring:${ringIndex}`;
 
@@ -1390,8 +2393,16 @@
 
         // Pre-compute algorithm sectors Set - called once
         function getAlgorithmSectorsSet() {
+            // Choose data source based on optimization toggles
+            let dataSource = sectorColors;
+            if (coverageOptimizationEnabled) {
+                dataSource = sectorColorsOptimized;
+            } else if (edgeExtensionEnabled) {
+                dataSource = sectorColorsWithEdge;
+            }
+
             const blackSectors = new Set();
-            for (const [sectorId, color] of Object.entries(sectorColors)) {
+            for (const [sectorId, color] of Object.entries(dataSource)) {
                 if (color) { // Only black sectors
                     blackSectors.add(sectorId);
                 }
@@ -1401,13 +2412,13 @@
 
         // Detect coverage errors - OPTIMIZED VERSION
         // Checks BOTH black and white modules:
-        // - Black modules: coverage must be >= 75%
-        // - White modules: coverage must be <= 25%
+        // - Black modules: coverage must be >= MIN_BLACK_COVERAGE
+        // - White modules: coverage must be <= MAX_WHITE_COVERAGE
         function detectCoverageErrors(checkAlgorithm = true) {
-            console.log('[detectCoverageErrors] Starting OPTIMIZED detection...');
+            console.log('[detectCoverageErrors] Starting HIGH-PRECISION detection...');
             const startTime = performance.now();
             const errors = [];
-            const sampleSize = 10; // Reduced from 20 to 10 (100 samples instead of 400)
+            const sampleSize = 20; // Increased to 20 for higher precision (400 samples per module)
             let skippedCount = 0;
             let blackErrors = 0;
             let whiteErrors = 0;
@@ -1415,7 +2426,11 @@
             // MAJOR OPTIMIZATION: Pre-compute sector Sets once!
             const algorithmSectorsSet = checkAlgorithm ? getAlgorithmSectorsSet() : null;
 
+            // Check if white ring decoration is enabled
+            const whiteRingEnabled = document.getElementById('show-layer-4-decoration').checked;
+
             console.log(`[detectCoverageErrors] Pre-computed algorithm sectors: ${algorithmSectorsSet ? algorithmSectorsSet.size : 0}`);
+            console.log(`[detectCoverageErrors] White ring decoration: ${whiteRingEnabled ? 'ENABLED (will affect coverage)' : 'DISABLED'}`);
 
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
@@ -1460,21 +2475,29 @@
                     // Check coverage constraints based on module color
                     let hasError = false;
                     if (isBlack) {
-                        // Black module: coverage must be >= 75%
-                        if (coverage < 0.75) {
+                        // Black module: coverage must be >= MIN_BLACK_COVERAGE
+                        if (coverage < MIN_BLACK_COVERAGE) {
                             hasError = true;
                             blackErrors++;
                         }
                     } else {
-                        // White module: coverage must be <= 25%
-                        if (coverage > 0.25) {
+                        // White module: coverage must be <= MAX_WHITE_COVERAGE
+                        if (coverage > MAX_WHITE_COVERAGE) {
                             hasError = true;
                             whiteErrors++;
                         }
                     }
 
                     if (hasError) {
-                        errors.push({ row, col, coverage, isBlack });
+                        // Collect detailed information for error analysis
+                        const overlappingSectors = findOverlappingSectors(row, col);
+                        errors.push({
+                            row,
+                            col,
+                            coverage,
+                            isBlack,
+                            overlappingSectors: overlappingSectors
+                        });
                     }
                 }
             }
@@ -1482,15 +2505,94 @@
             const endTime = performance.now();
             const elapsed = ((endTime - startTime) / 1000).toFixed(2);
             console.log(`[detectCoverageErrors] ✅ Found ${errors.length} errors in ${elapsed}s`);
-            console.log(`  - Black module errors (coverage < 75%): ${blackErrors}`);
-            console.log(`  - White module errors (coverage > 25%): ${whiteErrors}`);
+            console.log(`  - Black module errors (coverage < ${MIN_BLACK_COVERAGE * 100}%): ${blackErrors}`);
+            console.log(`  - White module errors (coverage > ${MAX_WHITE_COVERAGE * 100}%): ${whiteErrors}`);
             console.log(`  - Skipped special/masked modules: ${skippedCount}`);
+
+            // Output detailed error analysis
+            if (errors.length > 0) {
+                analyzeErrorDetails(errors, algorithmSectorsSet);
+            }
+
             return errors;
         }
 
+        // Analyze error details and output diagnostic information
+        function analyzeErrorDetails(errors, algorithmSectorsSet) {
+            console.log('\n' + '='.repeat(60));
+            console.log('📊 错误详细分析 (Error Analysis)');
+            console.log('='.repeat(60));
+
+            // Limit output to first 10 errors for readability
+            const errorsToAnalyze = errors.slice(0, 10);
+            console.log(`分析前 ${errorsToAnalyze.length} 个错误（共 ${errors.length} 个）:\n`);
+
+            for (let i = 0; i < errorsToAnalyze.length; i++) {
+                const error = errorsToAnalyze[i];
+                const { row, col, coverage, isBlack, overlappingSectors } = error;
+
+                console.log(`\n━━━ 错误 #${i + 1}: (${row}, ${col}) ━━━`);
+                console.log(`  模块类型: ${isBlack ? '黑色 (BLACK)' : '白色 (WHITE)'}`);
+                console.log(`  实际覆盖率: ${(coverage * 100).toFixed(1)}%`);
+                console.log(`  期望覆盖率: ${isBlack ? `≥${MIN_BLACK_COVERAGE * 100}%` : `≤${MAX_WHITE_COVERAGE * 100}%`}`);
+                console.log(`  差值: ${isBlack ? (coverage * 100 - MIN_BLACK_COVERAGE * 100).toFixed(1) : (coverage * 100 - MAX_WHITE_COVERAGE * 100).toFixed(1)}%`);
+
+                // Analyze overlapping sectors
+                const blackSectors = overlappingSectors.filter(s => algorithmSectorsSet.has(s.sectorId));
+                const whiteSectors = overlappingSectors.filter(s => !algorithmSectorsSet.has(s.sectorId));
+
+                console.log(`  覆盖扇区: ${overlappingSectors.length} 个 (${blackSectors.length} 黑, ${whiteSectors.length} 白)`);
+
+                if (blackSectors.length > 0) {
+                    const sectorList = blackSectors.slice(0, 5).map(s => s.sectorId).join(', ');
+                    console.log(`    黑色扇区: ${sectorList}${blackSectors.length > 5 ? '...' : ''}`);
+                }
+
+                // Analyze neighbors
+                const neighbors = [];
+                for (let dr = -1; dr <= 1; dr++) {
+                    for (let dc = -1; dc <= 1; dc++) {
+                        if (dr === 0 && dc === 0) continue;
+                        const nr = row + dr;
+                        const nc = col + dc;
+                        if (nr >= 0 && nr < moduleCount && nc >= 0 && nc < moduleCount) {
+                            const nIsBlack = baseModuleState[`${nr},${nc}`] || false;
+                            const nIsMasked = isModuleMaskedByLayer(nr, nc);
+                            neighbors.push({ row: nr, col: nc, isBlack: nIsBlack, isMasked: nIsMasked });
+                        }
+                    }
+                }
+
+                const blackNeighbors = neighbors.filter(n => !n.isMasked && n.isBlack).length;
+                const whiteNeighbors = neighbors.filter(n => !n.isMasked && !n.isBlack).length;
+                const maskedNeighbors = neighbors.filter(n => n.isMasked).length;
+
+                console.log(`  周边模块 (3×3): ${blackNeighbors} 黑, ${whiteNeighbors} 白, ${maskedNeighbors} 遮罩`);
+
+                // Suggest potential cause
+                if (isBlack && coverage < MIN_BLACK_COVERAGE) {
+                    if (blackSectors.length === 0) {
+                        console.log(`  ⚠️  原因分析: 黑色模块但无黑色扇区覆盖！`);
+                    } else if (coverage < 0.5) {
+                        console.log(`  ⚠️  原因分析: 覆盖率严重不足（<50%），扇区可能偏移`);
+                    } else {
+                        console.log(`  ⚠️  原因分析: 部分覆盖不足，边缘对齐问题`);
+                    }
+                } else if (!isBlack && coverage > MAX_WHITE_COVERAGE) {
+                    if (whiteSectors.length === 0) {
+                        console.log(`  ⚠️  原因分析: 白色模块被黑色扇区污染！`);
+                    } else {
+                        console.log(`  ⚠️  原因分析: 黑色扇区溢出到白色区域`);
+                    }
+                }
+            }
+
+            console.log('\n' + '='.repeat(60) + '\n');
+        }
+
         // Draw error markers on error layer
-        // Red border: black module with insufficient coverage (< 75%)
-        // Blue border: white module with excessive coverage (> 25%)
+        // Red border: black module with insufficient coverage (< MIN_BLACK_COVERAGE)
+        // Blue border: white module with excessive coverage (> MAX_WHITE_COVERAGE)
         function drawErrorMarkers(errors) {
             errorLayer.innerHTML = '';
 
@@ -1513,17 +2615,30 @@
 
                 errorLayer.appendChild(rect);
 
-                // Add text label showing coverage percentage
-                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                text.setAttribute('x', col + 0.5);
-                text.setAttribute('y', row + 0.5);
-                text.setAttribute('font-size', '0.25');
-                text.setAttribute('fill', errorColor);
-                text.setAttribute('text-anchor', 'middle');
-                text.setAttribute('dominant-baseline', 'middle');
-                text.textContent = Math.round(coverage * 100) + '%';
+                // Add text label showing module coordinates (row, col)
+                const coordText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                coordText.setAttribute('x', col + 0.5);
+                coordText.setAttribute('y', row + 0.35);
+                coordText.setAttribute('font-size', '0.18');
+                coordText.setAttribute('fill', errorColor);
+                coordText.setAttribute('text-anchor', 'middle');
+                coordText.setAttribute('dominant-baseline', 'middle');
+                coordText.setAttribute('font-weight', 'bold');
+                coordText.textContent = `(${row},${col})`;
 
-                errorLayer.appendChild(text);
+                errorLayer.appendChild(coordText);
+
+                // Add text label showing coverage percentage
+                const coverageText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                coverageText.setAttribute('x', col + 0.5);
+                coverageText.setAttribute('y', row + 0.65);
+                coverageText.setAttribute('font-size', '0.22');
+                coverageText.setAttribute('fill', errorColor);
+                coverageText.setAttribute('text-anchor', 'middle');
+                coverageText.setAttribute('dominant-baseline', 'middle');
+                coverageText.textContent = Math.round(coverage * 100) + '%';
+
+                errorLayer.appendChild(coverageText);
             }
 
             console.log(`[drawErrorMarkers] Drew ${errors.length} error markers`);
@@ -1711,8 +2826,8 @@
 
         // Create cell using clipPath for precise intersection
         function createCellWithClip(gridRow, gridCol, radialIndex, ringIndex, cellId) {
-            const angle1 = radialIndex * 3 * Math.PI / 180;
-            const angle2 = (radialIndex + 1) * 3 * Math.PI / 180;
+            const angle1 = radialIndex * RADIAL_ANGLE * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * RADIAL_ANGLE * Math.PI / 180;
             const r1 = ringIndex * RING_INTERVAL;
             const r2 = (ringIndex + 1) * RING_INTERVAL;
 
@@ -1758,8 +2873,8 @@
 
         // Old function (keep for reference, can be removed later)
         function createCellPath_OLD(gridRow, gridCol, radialIndex, ringIndex) {
-            const angle1 = radialIndex * 4 * Math.PI / 180;
-            const angle2 = (radialIndex + 1) * 4 * Math.PI / 180;
+            const angle1 = radialIndex * RADIAL_ANGLE * Math.PI / 180;
+            const angle2 = (radialIndex + 1) * RADIAL_ANGLE * Math.PI / 180;
             const r1 = ringIndex * RING_INTERVAL;
             const r2 = (ringIndex + 1) * RING_INTERVAL;
             const gridLeft = gridCol;
@@ -1878,12 +2993,97 @@
         drawGrid();
         drawCircles();
         drawRadialLines();
+        createWhiteRingMask(); // Create mask before drawing rings
         drawWhiteRings();
         drawModules();
 
         // Draw new independent display layers
         drawOriginalDisplay();
-        // drawAlgorithmDisplay() will be called after algorithm runs
+
+        // Load cached checkbox states first (before algorithm results)
+        loadCheckboxStates();
+
+        // Apply loaded checkbox states to layer visibility
+        const applyCheckboxStates = () => {
+            // Layer 1: Original
+            const showLayer1 = document.getElementById('show-layer-1-original');
+            if (showLayer1) originalDisplayLayer.style.display = showLayer1.checked ? 'block' : 'none';
+
+            // Layer 2: Mask
+            const showLayer2 = document.getElementById('show-layer-2-mask');
+            if (showLayer2) maskLayer.style.display = showLayer2.checked ? 'block' : 'none';
+
+            // Layer 2.5: Auxiliary
+            const showAux = document.getElementById('show-layer-2.5-auxiliary');
+            const showGrid = document.getElementById('show-grid');
+            const showCircles = document.getElementById('show-circles');
+            const showRadials = document.getElementById('show-radials');
+            if (showAux && showGrid && showCircles && showRadials) {
+                gridLayer.style.display = showAux.checked && showGrid.checked ? 'block' : 'none';
+                circleLayer.style.display = showAux.checked && showCircles.checked ? 'block' : 'none';
+                radialLayer.style.display = showAux.checked && showRadials.checked ? 'block' : 'none';
+            }
+
+            // Layer 4: Decoration
+            const showLayer4 = document.getElementById('show-layer-4-decoration');
+            if (showLayer4) whiteRingLayer.style.display = showLayer4.checked ? 'block' : 'none';
+
+            // Dark background
+            const darkBg = document.getElementById('toggle-dark-background');
+            if (darkBg) {
+                const svgContainer = document.getElementById('svg-container');
+                svgContainer.style.background = darkBg.checked ? '#2a2a2a' : 'white';
+            }
+
+            // Error layer
+            const showErrors = document.getElementById('show-errors');
+            if (showErrors) errorLayer.style.display = showErrors.checked ? 'block' : 'none';
+        };
+
+        applyCheckboxStates();
+
+        // Try to load cached algorithm results
+        const hasCachedResults = loadAlgorithmResults();
+        if (hasCachedResults) {
+            // Draw algorithm display layers with cached data
+            drawAlgorithmResult();
+            drawAlgorithmDisplay();
+            createWhiteRingMask();
+            drawWhiteRings();
+
+            // Auto-enable algorithm layer checkbox
+            document.getElementById('show-layer-3-algorithm').checked = true;
+
+            // Show algorithm stats if available
+            if (algorithmStats) {
+                const statsDiv = document.getElementById('algorithm-stats');
+                let statsHTML = `
+                    <strong>算法统计（纯扇环）：</strong><br>
+                    • 总扇环数：${algorithmStats.totalSectors}<br>
+                    • 单色扇环：${algorithmStats.sameColorSectors}<br>
+                    • 混色扇环：${algorithmStats.mixedColorSectors}<br>
+                    • 耗时：${algorithmStats.elapsedSeconds} 秒<br>
+                `;
+
+                statsHTML += `
+                    <br>
+                    <strong>颜色说明（三原色）：</strong><br>
+                    • 🔴 红色：原始方形码点<br>
+                    • 🔵 蓝色：人工扇环图像<br>
+                    • 🟢 绿色：算法扇环图像<br>
+                    • ⚪ 白色：留空（不显示）
+                `;
+
+                statsDiv.innerHTML = statsHTML;
+                statsDiv.style.display = 'block';
+
+                console.log('[Init] ✅ Restored algorithm display from cache');
+            }
+
+            // Update button text to indicate re-run
+            const runButton = document.getElementById('run-algorithm');
+            runButton.textContent = '重新运行算法 (Re-run Algorithm)';
+        }
 
         // 隐藏旧的调试图层
         moduleLayer.style.display = 'none';
@@ -1896,8 +3096,12 @@
         // Layer 2: Mask - 默认显示 (checked)
         maskLayer.style.display = 'block';
 
-        // Layer 3: Algorithm - 默认隐藏 (unchecked)
-        algorithmDisplayLayer.style.display = 'none';
+        // Layer 3: Algorithm - 根据缓存决定
+        if (hasCachedResults) {
+            algorithmDisplayLayer.style.display = 'block';
+        } else {
+            algorithmDisplayLayer.style.display = 'none';
+        }
 
         // Layer 4: Decoration (white rings) - 默认隐藏 (unchecked)
         whiteRingLayer.style.display = 'none';
@@ -1984,6 +3188,10 @@
                     drawAlgorithmResult();
                     drawAlgorithmDisplay();
 
+                    // Update white ring mask to match algorithm data
+                    createWhiteRingMask();
+                    drawWhiteRings();
+
                     // Show stats
                     let statsHTML = `
                         <strong>算法统计（纯扇环）：</strong><br>
@@ -2015,7 +3223,7 @@
                     alert('算法执行失败：' + error.message);
                 } finally {
                     button.disabled = false;
-                    button.textContent = '运行算法 (Run Algorithm)';
+                    button.textContent = '重新运行算法 (Re-run Algorithm)';
                 }
             } else {
                 // Normal toggle behavior
@@ -2025,16 +3233,105 @@
 
         document.getElementById('show-layer-4-decoration').addEventListener('change', (e) => {
             whiteRingLayer.style.display = e.target.checked ? 'block' : 'none';
+
+            // Debug: log white ring layer status
+            console.log('[Layer 4 Decoration] Toggled:', e.target.checked);
+            console.log('[Layer 4 Decoration] Layer element:', whiteRingLayer);
+            console.log('[Layer 4 Decoration] Layer children count:', whiteRingLayer.children.length);
+            console.log('[Layer 4 Decoration] Layer innerHTML length:', whiteRingLayer.innerHTML.length);
+            console.log('[Layer 4 Decoration] Layer mask attribute:', whiteRingLayer.getAttribute('mask'));
+
+            // Check if mask exists
+            const mask = document.getElementById('white-ring-mask');
+            console.log('[Layer 4 Decoration] Mask element:', mask);
+            if (mask) {
+                console.log('[Layer 4 Decoration] Mask children count:', mask.children.length);
+                console.log('[Layer 4 Decoration] Mask innerHTML:', mask.innerHTML.substring(0, 500));
+            }
+        });
+
+        // Dark background toggle (for viewing white rings)
+        document.getElementById('toggle-dark-background').addEventListener('change', (e) => {
+            const svgContainer = document.getElementById('svg-container');
+            if (e.target.checked) {
+                svgContainer.style.background = '#2a2a2a'; // Dark gray background
+                console.log('[Background] Switched to dark background');
+            } else {
+                svgContainer.style.background = 'white'; // White background
+                console.log('[Background] Switched to white background');
+            }
+        });
+
+        // White ring stroke width control
+        document.getElementById('white-ring-width').addEventListener('input', (e) => {
+            whiteRingStrokeWidth = parseFloat(e.target.value);
+            document.getElementById('white-ring-width-value').textContent = whiteRingStrokeWidth.toFixed(1);
+
+            // Redraw white rings with new width
+            drawWhiteRings();
+
+            console.log(`[White Ring Width] Changed to ${whiteRingStrokeWidth}`);
         });
 
         // Edge extension toggle
         document.getElementById('toggle-edge-extension').addEventListener('change', (e) => {
             edgeExtensionEnabled = e.target.checked;
+
+            // If edge extension is disabled, also disable coverage optimization
+            if (!edgeExtensionEnabled && coverageOptimizationEnabled) {
+                coverageOptimizationEnabled = false;
+                document.getElementById('toggle-coverage-optimization').checked = false;
+            }
+
             console.log(`[Edge Extension] Toggle: ${edgeExtensionEnabled ? 'ENABLED' : 'DISABLED'}`);
 
             // Redraw if algorithm has been run
             if (Object.keys(sectorColors).length > 0) {
                 drawAlgorithmDisplay();
+
+                // Update white ring mask to match new data source
+                createWhiteRingMask();
+                drawWhiteRings();
+
+                // If error layer is visible, re-run coverage detection with new data source
+                const showErrorsCheckbox = document.getElementById('show-errors');
+                if (showErrorsCheckbox && showErrorsCheckbox.checked) {
+                    console.log('[Edge Extension] Re-running coverage detection with new data source...');
+                    const checkAlgorithm = algorithmDisplayLayer.style.display !== 'none';
+                    const errors = detectCoverageErrors(checkAlgorithm);
+                    drawErrorMarkers(errors);
+                }
+            }
+        });
+
+        // Coverage optimization toggle
+        document.getElementById('toggle-coverage-optimization').addEventListener('change', (e) => {
+            // Coverage optimization requires edge extension to be enabled
+            if (e.target.checked && !edgeExtensionEnabled) {
+                edgeExtensionEnabled = true;
+                document.getElementById('toggle-edge-extension').checked = true;
+                console.log('[Coverage Opt] Auto-enabled edge extension (required)');
+            }
+
+            coverageOptimizationEnabled = e.target.checked;
+            console.log(`[Coverage Opt] Toggle: ${coverageOptimizationEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+            // Redraw if algorithm has been run
+            if (Object.keys(sectorColors).length > 0) {
+                drawAlgorithmDisplay();
+
+                // Update white ring mask to match new data source
+                createWhiteRingMask();
+                drawWhiteRings();
+
+                // If error layer is visible, re-run coverage detection with new data source
+                const showErrorsCheckbox = document.getElementById('show-errors');
+                if (showErrorsCheckbox && showErrorsCheckbox.checked) {
+                    console.log('[Coverage Opt] Re-running coverage detection with new data source...');
+                    const checkAlgorithm = algorithmDisplayLayer.style.display !== 'none';
+                    const errors = detectCoverageErrors(checkAlgorithm);
+                    drawErrorMarkers(errors);
+                }
             }
         });
 
@@ -2042,6 +3339,14 @@
         document.getElementById('show-errors').addEventListener('change', (e) => {
             errorLayer.style.display = e.target.checked ? 'block' : 'none';
         });
+
+        // Auto-save all checkbox states when any checkbox changes
+        document.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                saveCheckboxStates();
+            });
+        });
+        console.log('[Checkbox Cache] ✅ Auto-save enabled for all checkboxes');
 
         document.getElementById('run-detection').addEventListener('click', () => {
             const button = document.getElementById('run-detection');
@@ -2075,7 +3380,7 @@
                     let statsHTML = `
                         <strong>检测结果：</strong><br>
                         • 总黑色码点：${totalBlackModules}<br>
-                        • 覆盖不足（<75%）：${errors.length}<br>
+                        • 覆盖不足（<${MIN_BLACK_COVERAGE * 100}%）：${errors.length}<br>
                         • 错误率：${errorRate}%<br>
                         <br>
                         <strong>检测范围：</strong><br>
@@ -2091,7 +3396,7 @@
                         errorLayer.style.display = 'block';
                     }
 
-                    alert(`检测完成！\n发现 ${errors.length} 个覆盖不足的码点（<75%）\n错误率：${errorRate}%`);
+                    alert(`检测完成！\n发现 ${errors.length} 个覆盖不足的码点（<${MIN_BLACK_COVERAGE * 100}%）\n错误率：${errorRate}%`);
                 } catch (error) {
                     console.error('[Detection] Error:', error);
                     alert('检测失败：' + error.message);
@@ -2120,12 +3425,16 @@
                 const savedGridDisplay = gridLayer.style.display;
                 const savedCircleDisplay = circleLayer.style.display;
                 const savedRadialDisplay = radialLayer.style.display;
+                const savedWhiteRingDisplay = whiteRingLayer.style.display;
+                const savedErrorDisplay = errorLayer.style.display;
 
                 gridLayer.style.display = 'none';
                 circleLayer.style.display = 'none';
                 radialLayer.style.display = 'none';
+                whiteRingLayer.style.display = 'none';
+                errorLayer.style.display = 'none';
 
-                console.log('[QR Test] Temporarily hiding auxiliary layers (grid, circles, radials)');
+                console.log('[QR Test] Temporarily hiding auxiliary layers (grid, circles, radials, white rings, errors)');
 
                 // Get the SVG element
                 const svgElement = svg;
@@ -2200,6 +3509,8 @@
                     gridLayer.style.display = savedGridDisplay;
                     circleLayer.style.display = savedCircleDisplay;
                     radialLayer.style.display = savedRadialDisplay;
+                    whiteRingLayer.style.display = savedWhiteRingDisplay;
+                    errorLayer.style.display = savedErrorDisplay;
                     console.log('[QR Test] Restored auxiliary layers');
 
                     button.disabled = false;
@@ -2211,6 +3522,8 @@
                     gridLayer.style.display = savedGridDisplay;
                     circleLayer.style.display = savedCircleDisplay;
                     radialLayer.style.display = savedRadialDisplay;
+                    whiteRingLayer.style.display = savedWhiteRingDisplay;
+                    errorLayer.style.display = savedErrorDisplay;
 
                     statusLight.style.background = '#f44336'; // Red
                     statusText.textContent = '加载失败';
@@ -2230,6 +3543,8 @@
                     gridLayer.style.display = savedGridDisplay;
                     circleLayer.style.display = savedCircleDisplay;
                     radialLayer.style.display = savedRadialDisplay;
+                    whiteRingLayer.style.display = savedWhiteRingDisplay;
+                    errorLayer.style.display = savedErrorDisplay;
                 } catch (e) {
                     // Ignore restoration errors
                 }
@@ -2257,6 +3572,10 @@
                 const stats = await runConversionAlgorithm();
                 drawAlgorithmResult();
                 drawAlgorithmDisplay(); // Draw on new independent display layer
+
+                // Update white ring mask to match algorithm data
+                createWhiteRingMask();
+                drawWhiteRings();
 
                 // Show stats
                 let statsHTML = `
@@ -2289,7 +3608,7 @@
                 alert('算法执行失败：' + error.message);
             } finally {
                 button.disabled = false;
-                button.textContent = '运行算法 (Run Algorithm)';
+                button.textContent = '重新运行算法 (Re-run Algorithm)';
             }
         });
 
@@ -2322,6 +3641,178 @@
             console.log('========================================');
 
             alert(`调试完成！\n请查看控制台输出。\n\n扇环颜色: ${color ? '黑色' : '白色'}\n算法结果: ${algoEdits.length} 个`);
+        });
+
+        // Download QR code as pure black/white image - directly from SVG
+        document.getElementById('download-qr').addEventListener('click', async () => {
+            // Check if algorithm has been run
+            if (Object.keys(sectorColors).length === 0) {
+                alert('请先运行算法生成二维码！');
+                return;
+            }
+
+            console.log('[Download] Converting SVG to black/white PNG...');
+
+            // Choose filename based on optimization toggles
+            let filename = 'qr-algorithm';
+            if (coverageOptimizationEnabled) {
+                filename = 'qr-optimized';
+            } else if (edgeExtensionEnabled) {
+                filename = 'qr-edge-extended';
+            }
+
+            // Clone the SVG for processing
+            const svgClone = svg.cloneNode(true);
+
+            // Store original display states
+            const layerStates = {
+                original: document.getElementById('show-layer-1-original').checked,
+                mask: document.getElementById('show-layer-2-mask').checked,
+                grid: document.getElementById('show-grid').checked,
+                circles: document.getElementById('show-circles').checked,
+                radial: document.getElementById('show-radials').checked, // Note: 'show-radials' (plural)
+                algorithm: document.getElementById('show-layer-3-algorithm').checked,
+                decoration: document.getElementById('show-layer-4-decoration').checked
+            };
+
+            console.log('[Download] Current layer states:', layerStates);
+
+            // Get all layers from cloned SVG
+            const layers = {
+                original: svgClone.querySelector('#layer-1-original'),
+                mask: svgClone.querySelector('#layer-2-mask'),
+                grid: svgClone.querySelector('#grid-layer'),
+                circles: svgClone.querySelector('#circle-layer'),
+                radial: svgClone.querySelector('#radial-layer'),
+                algorithm: svgClone.querySelector('#layer-3-algorithm'),
+                decoration: svgClone.querySelector('#white-ring-layer'),
+                error: svgClone.querySelector('#error-layer')
+            };
+
+            // Hide layers that should not be in the download
+            if (layers.original) layers.original.style.display = 'none'; // Always hide original (red) layer
+            if (layers.error) layers.error.style.display = 'none'; // Always hide error highlights
+            if (layers.grid) layers.grid.style.display = 'none'; // Hide debug grid
+            if (layers.circles) layers.circles.style.display = 'none'; // Hide debug circles
+            if (layers.radial) layers.radial.style.display = 'none'; // Hide debug radial lines
+
+            // Show layers based on user selection
+            if (layers.mask && layerStates.mask) {
+                layers.mask.style.display = 'block';
+            } else if (layers.mask) {
+                layers.mask.style.display = 'none';
+            }
+
+            if (layers.algorithm && layerStates.algorithm) {
+                layers.algorithm.style.display = 'block';
+            } else if (layers.algorithm) {
+                layers.algorithm.style.display = 'none';
+            }
+
+            if (layers.decoration && layerStates.decoration) {
+                layers.decoration.style.display = 'block';
+            } else if (layers.decoration) {
+                layers.decoration.style.display = 'none';
+            }
+
+            // Convert colors to pure black/white
+            // Green (#00ff00) -> Black
+            // Red (#ff0000) -> Black
+            // White (#ffffff) -> White
+            const allElements = svgClone.querySelectorAll('*');
+            allElements.forEach(el => {
+                // Convert fill colors
+                const fill = el.getAttribute('fill');
+                if (fill && fill !== 'none') {
+                    // Convert any non-white color to black
+                    if (fill.toLowerCase() !== '#ffffff' && fill.toLowerCase() !== 'white') {
+                        el.setAttribute('fill', 'black');
+                    } else {
+                        el.setAttribute('fill', 'white');
+                    }
+                }
+
+                // Convert stroke colors
+                const stroke = el.getAttribute('stroke');
+                if (stroke && stroke !== 'none') {
+                    // Keep white strokes white, convert others to black
+                    if (stroke.toLowerCase() !== '#ffffff' && stroke.toLowerCase() !== 'white') {
+                        el.setAttribute('stroke', 'black');
+                    } else {
+                        el.setAttribute('stroke', 'white');
+                    }
+                }
+
+                // Set full opacity for all visible elements
+                if (el.getAttribute('opacity')) {
+                    el.setAttribute('opacity', '1');
+                }
+            });
+
+            // Serialize SVG to string
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(svgClone);
+
+            // Add white background
+            svgString = svgString.replace(
+                '<svg',
+                '<svg style="background-color: white;"'
+            );
+
+            // Create blob and data URL
+            const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+
+            // Create image from SVG
+            const img = new Image();
+            img.onload = () => {
+                // Create high-resolution canvas
+                const exportSize = 2000; // 2000x2000 px for high quality
+                const canvas = document.createElement('canvas');
+                canvas.width = exportSize;
+                canvas.height = exportSize;
+                const ctx = canvas.getContext('2d', {
+                    alpha: false,
+                    willReadFrequently: false
+                });
+
+                // Enable anti-aliasing
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+
+                // Fill white background
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, exportSize, exportSize);
+
+                // Draw SVG image
+                ctx.drawImage(img, 0, 0, exportSize, exportSize);
+
+                // Clean up
+                URL.revokeObjectURL(svgUrl);
+
+                // Convert to PNG and download
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${filename}.png`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+
+                    console.log(`[Download] ✅ Downloaded as ${filename}.png (${exportSize}×${exportSize}px)`);
+                    console.log(`[Download] Included layers: mask=${layerStates.mask}, algorithm=${layerStates.algorithm}, decoration=${layerStates.decoration}`);
+                }, 'image/png');
+            };
+
+            img.onerror = () => {
+                URL.revokeObjectURL(svgUrl);
+                alert('下载失败：无法转换 SVG');
+                console.error('[Download] Failed to load SVG image');
+            };
+
+            img.src = svgUrl;
         });
 
         // ========== Functional Mask Layer Management ==========
