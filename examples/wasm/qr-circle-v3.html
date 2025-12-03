@@ -624,7 +624,7 @@
         svg.appendChild(moduleLayer);
 
         // === Layer architecture (bottom to top) ===
-        // Layer 1: Original QR layer (red + white background, fully opaque)
+        // Layer 1: Original QR layer (red on transparent, black modules only)
         const originalDisplayLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
         originalDisplayLayer.setAttribute('id', 'layer-1-original');
         originalDisplayLayer.setAttribute('opacity', '1'); // Fully opaque
@@ -2303,7 +2303,7 @@
                 }
             }
 
-            // Draw all regular modules (both black and white for opaque background)
+            // Draw only black modules (red color), white modules are transparent
             for (let row = 0; row < moduleCount; row++) {
                 for (let col = 0; col < moduleCount; col++) {
                     // Skip special pattern areas
@@ -2311,12 +2311,15 @@
 
                     const isBlack = baseModuleState[`${row},${col}`];
 
+                    // Only draw black modules (red), skip white modules for transparency
+                    if (!isBlack) continue;
+
                     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                     rect.setAttribute('x', col);
                     rect.setAttribute('y', row);
                     rect.setAttribute('width', 1);
                     rect.setAttribute('height', 1);
-                    rect.setAttribute('fill', isBlack ? '#FF0000' : '#FFFFFF'); // Red for black, white for white
+                    rect.setAttribute('fill', '#FF0000'); // Red for black modules
                     rect.setAttribute('stroke', 'none');
                     rect.setAttribute('shape-rendering', 'crispEdges');
 
