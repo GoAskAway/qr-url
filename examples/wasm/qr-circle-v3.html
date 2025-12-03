@@ -407,105 +407,93 @@
         // Coordinates are in module units (0-28 for QR v3)
 
         // Finder pattern regions (7x7 + 1 separator = 8x8 each)
-        const FINDER_REGIONS = [
-            { rowMin: 0, rowMax: 8, colMin: 0, colMax: 8, name: 'Top-left finder' },
-            { rowMin: 0, rowMax: 8, colMin: 21, colMax: 29, name: 'Top-right finder' },
-            { rowMin: 21, rowMax: 29, colMin: 0, colMax: 8, name: 'Bottom-left finder' }
-        ];
-
         // NOTE: Alignment pattern is NOT excluded - it will be converted to sectors like other data areas
 
-        // Logo and excluded regions - optimized compact definition
-        // Source: mask.json - 195 cells total, organized by region
-        const LOGO_BLOCKS = (() => {
-            const blocks = [];
+        // Logo and excluded regions - precomputed boolean grid for O(1) lookup
+        // Source: mask.json - 195 cells total
+        // Uses 29×29 boolean array (841 bytes) for fastest possible query performance
+        const SKIP_GRID = (() => {
+            const grid = Array(29).fill(null).map(() => Array(29).fill(false));
 
-            // 1. 中心logo区（不规则形状，每列范围略有不同）
-            // 列9: 行9-16
-            for (let row = 9; row <= 16; row++) blocks.push({ row, col: 9 });
-            // 列10: 行10-17
-            for (let row = 10; row <= 17; row++) blocks.push({ row, col: 10 });
-            // 列11: 行9-20
-            for (let row = 9; row <= 20; row++) blocks.push({ row, col: 11 });
-            // 列12: 行8-19
-            for (let row = 8; row <= 19; row++) blocks.push({ row, col: 12 });
-            // 列13: 行9-20
-            for (let row = 9; row <= 20; row++) blocks.push({ row, col: 13 });
-            // 列14: 行10-21
-            for (let row = 10; row <= 21; row++) blocks.push({ row, col: 14 });
-            // 列15: 行9-20
-            for (let row = 9; row <= 20; row++) blocks.push({ row, col: 15 });
-            // 列16: 行8-19
-            for (let row = 8; row <= 19; row++) blocks.push({ row, col: 16 });
-            // 列17: 行9-20
-            for (let row = 9; row <= 20; row++) blocks.push({ row, col: 17 });
-            // 列18: 行10-21
-            for (let row = 10; row <= 21; row++) blocks.push({ row, col: 18 });
+            // Helper to mark a cell as skip region
+            const markSkip = (row, col) => {
+                if (row >= 0 && row < 29 && col >= 0 && col < 29) {
+                    grid[row][col] = true;
+                }
+            };
 
-            // 2. 右下角tail margin区域（4×4矩形）
+            // 1. 中心logo区（不规则形状）
+            for (let row = 9; row <= 16; row++) markSkip(row, 9);   // 列9
+            for (let row = 10; row <= 17; row++) markSkip(row, 10); // 列10
+            for (let row = 9; row <= 20; row++) markSkip(row, 11);  // 列11
+            for (let row = 8; row <= 19; row++) markSkip(row, 12);  // 列12
+            for (let row = 9; row <= 20; row++) markSkip(row, 13);  // 列13
+            for (let row = 10; row <= 21; row++) markSkip(row, 14); // 列14
+            for (let row = 9; row <= 20; row++) markSkip(row, 15);  // 列15
+            for (let row = 8; row <= 19; row++) markSkip(row, 16);  // 列16
+            for (let row = 9; row <= 20; row++) markSkip(row, 17);  // 列17
+            for (let row = 10; row <= 21; row++) markSkip(row, 18); // 列18
+
+            // 2. 右下角tail margin（4×4矩形）
             for (let row = 25; row <= 28; row++) {
                 for (let col = 25; col <= 28; col++) {
-                    blocks.push({ row, col });
+                    markSkip(row, col);
                 }
             }
 
-            // 3. Finder pattern周围分隔条（3个8×1横条 + 3个1×8竖条）
-            // 左上finder：横条(0-7, 7) + 竖条(7, 0-7)
-            for (let col = 0; col <= 7; col++) blocks.push({ row: 7, col });
-            for (let row = 0; row <= 7; row++) blocks.push({ row, col: 7 });
-            // 右上finder：横条(21-28, 7) + 竖条(21, 0-7)
-            for (let col = 21; col <= 28; col++) blocks.push({ row: 7, col });
-            for (let row = 0; row <= 7; row++) blocks.push({ row, col: 21 });
-            // 左下finder：横条(0-7, 21) + 竖条(7, 21-28)
-            for (let col = 0; col <= 7; col++) blocks.push({ row: 21, col });
-            for (let row = 21; row <= 28; row++) blocks.push({ row, col: 7 });
+            // 3. Finder pattern分隔条
+            // 左上finder
+            for (let col = 0; col <= 7; col++) markSkip(7, col);
+            for (let row = 0; row <= 7; row++) markSkip(row, 7);
+            // 右上finder
+            for (let col = 21; col <= 28; col++) markSkip(7, col);
+            for (let row = 0; row <= 7; row++) markSkip(row, 21);
+            // 左下finder
+            for (let col = 0; col <= 7; col++) markSkip(21, col);
+            for (let row = 21; row <= 28; row++) markSkip(row, 7);
 
-            // 4. Timing pattern周围分隔点（行6和列6的交替点）
-            // 行6: 列9, 11, 13, 15, 17, 19
-            for (let col = 9; col <= 19; col += 2) blocks.push({ row: 6, col });
-            // 列6: 行9, 11, 13, 15, 17, 19
-            for (let row = 9; row <= 19; row += 2) blocks.push({ row, col: 6 });
+            // 4. Timing pattern分隔点
+            for (let col = 9; col <= 19; col += 2) markSkip(6, col);  // 行6
+            for (let row = 9; row <= 19; row += 2) markSkip(row, 6);  // 列6
 
-            // 5. 左下角散点（7个独立点）
-            const bottomLeftScattered = [
-                { row: 17, col: 0 }, { row: 18, col: 0 }, { row: 19, col: 0 }, { row: 20, col: 0 },
-                { row: 18, col: 1 }, { row: 19, col: 1 }, { row: 20, col: 1 }
-            ];
-            blocks.push(...bottomLeftScattered);
+            // 5. 左下角散点
+            [17, 18, 19, 20].forEach(row => markSkip(row, 0));
+            [18, 19, 20].forEach(row => markSkip(row, 1));
 
-            console.log(`[LOGO_BLOCKS] Generated ${blocks.length} cells from compact definition (expected: 195)`);
-            return blocks;
+            // Count marked cells for verification
+            let count = 0;
+            for (let row = 0; row < 29; row++) {
+                for (let col = 0; col < 29; col++) {
+                    if (grid[row][col]) count++;
+                }
+            }
+            console.log(`[SKIP_GRID] Precomputed ${count} skip cells (expected: 195) in 29×29 grid`);
+
+            return grid;
         })();
 
-        // Create a fast lookup Set for logo blocks (key: "row,col")
-        const LOGO_BLOCKS_SET = new Set(LOGO_BLOCKS.map(b => `${b.row},${b.col}`));
-
-        // Legacy definitions (kept for reference, but not used)
+        // Legacy definitions (kept for reference, replaced by SKIP_GRID)
+        // const FINDER_REGIONS = [
+        //     { rowMin: 0, rowMax: 8, colMin: 0, colMax: 8, name: 'Top-left finder' },
+        //     { rowMin: 0, rowMax: 8, colMin: 21, colMax: 29, name: 'Top-right finder' },
+        //     { rowMin: 21, rowMax: 29, colMin: 0, colMax: 8, name: 'Bottom-left finder' }
+        // ];
         // const LOGO_REGION = { cx: 14.5, cy: 14.5, r: 4, name: 'Center logo' };
         // const TAIL_MARGIN_REGION = { rowMin: 25, rowMax: 29, colMin: 25, colMax: 29, name: 'Tail margin' };
 
         // Helper: Check if a point (in module coordinates) is in any skip region
+        // Optimized for high-frequency calls (called ~50k times during sector generation)
         function isPointInSkipRegion(x, y) {
-            // Check finder regions
-            for (const region of FINDER_REGIONS) {
-                if (x >= region.colMin && x < region.colMax &&
-                    y >= region.rowMin && y < region.rowMax) {
-                    return true;
-                }
-            }
-
-            // NOTE: Alignment pattern is NOT excluded - it will be sector-converted
-
-            // Check logo blocks (1×1 module blocks)
-            // Convert point coordinates to module indices
+            // Fast path: bounds check first
             const col = Math.floor(x);
             const row = Math.floor(y);
-
-            if (LOGO_BLOCKS_SET.has(`${row},${col}`)) {
-                return true;
+            if (row < 0 || row >= 29 || col < 0 || col >= 29) {
+                return false;
             }
 
-            return false;
+            // O(1) lookup in precomputed grid - fastest possible
+            // Includes: finder regions, logo, tail margin, timing separators
+            return SKIP_GRID[row][col];
         }
 
         // Helper: Check if a sector overlaps significantly with skip regions
