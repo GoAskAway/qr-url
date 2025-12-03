@@ -3847,7 +3847,7 @@
             if (!maskData) return;
 
             // Render circles (white fill to mask/hide data)
-            maskData.circles?.forEach(({ cx, cy, r }) => {
+            maskData.circles?.forEach(({ cx, cy, r }, index) => {
                 const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
                 circle.setAttribute('cx', cx);
                 circle.setAttribute('cy', cy);
@@ -3860,7 +3860,7 @@
             });
 
             // Render rectangles (white fill to mask/hide data)
-            maskData.rects?.forEach(({ x, y, w, h }) => {
+            maskData.rects?.forEach(({ x, y, w, h }, index) => {
                 const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
                 rect.setAttribute('x', x);
                 rect.setAttribute('y', y);
@@ -3874,6 +3874,95 @@
             });
 
             console.log(`[Mask] Rendered ${maskData.circles?.length || 0} circles and ${maskData.rects?.length || 0} rects`);
+
+            // Print detailed mask region information
+            printMaskRegions();
+        }
+
+        // Print detailed information about mask regions
+        function printMaskRegions() {
+            if (!maskData) {
+                console.log('[Mask Regions] No mask data available');
+                return;
+            }
+
+            console.log('========================================');
+            console.log('🎭 遮罩层区域坐标详情');
+            console.log('========================================');
+
+            const qrCenter = { x: 14.5, y: 14.5 }; // QR v3 中心点
+            const qrSize = 29; // QR v3 尺寸
+
+            // 打印圆形遮罩（通常是中心 logo 区）
+            if (maskData.circles && maskData.circles.length > 0) {
+                console.log('\n📍 圆形遮罩区域（通常为中心 Logo 区）:');
+                maskData.circles.forEach(({ cx, cy, r }, index) => {
+                    const distFromCenter = Math.sqrt(
+                        Math.pow(cx - qrCenter.x, 2) +
+                        Math.pow(cy - qrCenter.y, 2)
+                    );
+                    const isCenter = distFromCenter < 5; // 距离中心 5 个单位内
+
+                    console.log(`  圆形 ${index + 1}:`);
+                    console.log(`    中心: (${cx}, ${cy})`);
+                    console.log(`    半径: ${r}`);
+                    console.log(`    直径: ${r * 2}`);
+                    console.log(`    覆盖范围: x[${cx - r}, ${cx + r}], y[${cy - r}, ${cy + r}]`);
+
+                    // 计算覆盖的码点范围
+                    const minRow = Math.max(0, Math.floor(cy - r));
+                    const maxRow = Math.min(qrSize - 1, Math.ceil(cy + r));
+                    const minCol = Math.max(0, Math.floor(cx - r));
+                    const maxCol = Math.min(qrSize - 1, Math.ceil(cx + r));
+
+                    console.log(`    覆盖码点范围: 行[${minRow}, ${maxRow}], 列[${minCol}, ${maxCol}]`);
+                    console.log(`    位置: ${isCenter ? '✅ 中心区域' : '其他区域'}`);
+                    console.log('');
+                });
+            }
+
+            // 打印矩形遮罩
+            if (maskData.rects && maskData.rects.length > 0) {
+                console.log('\n📐 矩形遮罩区域:');
+                maskData.rects.forEach(({ x, y, w, h }, index) => {
+                    const centerX = x + w / 2;
+                    const centerY = y + h / 2;
+
+                    // 判断位置
+                    let position = '';
+                    if (centerX > qrSize * 0.6 && centerY > qrSize * 0.6) {
+                        position = '✅ 右下角区域';
+                    } else if (centerX < qrSize * 0.4 && centerY < qrSize * 0.4) {
+                        position = '左上角区域';
+                    } else if (centerX > qrSize * 0.6 && centerY < qrSize * 0.4) {
+                        position = '右上角区域';
+                    } else if (centerX < qrSize * 0.4 && centerY > qrSize * 0.6) {
+                        position = '左下角区域';
+                    } else {
+                        position = '中间区域';
+                    }
+
+                    console.log(`  矩形 ${index + 1}:`);
+                    console.log(`    左上角: (${x}, ${y})`);
+                    console.log(`    宽度: ${w}, 高度: ${h}`);
+                    console.log(`    右下角: (${x + w}, ${y + h})`);
+                    console.log(`    中心点: (${centerX}, ${centerY})`);
+
+                    // 计算覆盖的码点范围
+                    const minRow = Math.max(0, Math.floor(y));
+                    const maxRow = Math.min(qrSize - 1, Math.ceil(y + h) - 1);
+                    const minCol = Math.max(0, Math.floor(x));
+                    const maxCol = Math.min(qrSize - 1, Math.ceil(x + w) - 1);
+
+                    console.log(`    覆盖码点范围: 行[${minRow}, ${maxRow}], 列[${minCol}, ${maxCol}]`);
+                    console.log(`    位置: ${position}`);
+                    console.log('');
+                });
+            }
+
+            console.log('========================================');
+            console.log(`总计: ${maskData.circles?.length || 0} 个圆形 + ${maskData.rects?.length || 0} 个矩形`);
+            console.log('========================================\n');
         }
 
         // Parse SVG mask file
@@ -3943,6 +4032,139 @@
 
         // Load mask on init
         loadMaskData();
+
+        // Add global function to print mask data from localStorage
+        window.printMaskData = function() {
+            console.log('========================================');
+            console.log('📦 读取 localStorage 中的遮罩数据');
+            console.log('========================================\n');
+
+            const saved = localStorage.getItem(STORAGE_KEY_MASK);
+            if (!saved) {
+                console.log('❌ 没有找到遮罩数据');
+                console.log('提示: 请先上传遮罩 SVG 文件');
+                return;
+            }
+
+            try {
+                const data = JSON.parse(saved);
+
+                console.log('✅ 遮罩数据结构:');
+                console.log(`   - 圆形: ${data.circles?.length || 0} 个`);
+                console.log(`   - 矩形: ${data.rects?.length || 0} 个`);
+                console.log('');
+
+                // 打印所有圆形
+                if (data.circles && data.circles.length > 0) {
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log('🔘 圆形区域列表:');
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+                    data.circles.forEach((circle, index) => {
+                        const { cx, cy, r } = circle;
+                        const qrCenter = { x: 14.5, y: 14.5 };
+                        const distFromCenter = Math.sqrt(
+                            Math.pow(cx - qrCenter.x, 2) +
+                            Math.pow(cy - qrCenter.y, 2)
+                        );
+
+                        console.log(`圆形 #${index + 1}:`);
+                        console.log(`  中心点: (${cx}, ${cy})`);
+                        console.log(`  半径: ${r}`);
+                        console.log(`  直径: ${r * 2}`);
+                        console.log(`  X 范围: [${cx - r} ~ ${cx + r}]`);
+                        console.log(`  Y 范围: [${cy - r} ~ ${cy + r}]`);
+
+                        // 码点范围
+                        const minRow = Math.max(0, Math.floor(cy - r));
+                        const maxRow = Math.min(28, Math.ceil(cy + r));
+                        const minCol = Math.max(0, Math.floor(cx - r));
+                        const maxCol = Math.min(28, Math.ceil(cx + r));
+                        console.log(`  码点行: [${minRow} ~ ${maxRow}]`);
+                        console.log(`  码点列: [${minCol} ~ ${maxCol}]`);
+
+                        // 判断位置
+                        if (distFromCenter < 3) {
+                            console.log(`  位置: ⭐ 中心区域 (距QR中心 ${distFromCenter.toFixed(2)} 单位)`);
+                        } else {
+                            console.log(`  位置: 其他区域 (距QR中心 ${distFromCenter.toFixed(2)} 单位)`);
+                        }
+                        console.log('');
+                    });
+                }
+
+                // 打印所有矩形
+                if (data.rects && data.rects.length > 0) {
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                    console.log('▭ 矩形区域列表:');
+                    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+                    data.rects.forEach((rect, index) => {
+                        const { x, y, w, h } = rect;
+                        const centerX = x + w / 2;
+                        const centerY = y + h / 2;
+                        const qrSize = 29;
+
+                        // 判断位置
+                        let position = '';
+                        let emoji = '';
+                        if (centerX > qrSize * 0.65 && centerY > qrSize * 0.65) {
+                            position = '右下角';
+                            emoji = '↘️';
+                        } else if (centerX < qrSize * 0.35 && centerY < qrSize * 0.35) {
+                            position = '左上角';
+                            emoji = '↖️';
+                        } else if (centerX > qrSize * 0.65 && centerY < qrSize * 0.35) {
+                            position = '右上角';
+                            emoji = '↗️';
+                        } else if (centerX < qrSize * 0.35 && centerY > qrSize * 0.65) {
+                            position = '左下角';
+                            emoji = '↙️';
+                        } else if (Math.abs(centerX - 14.5) < 5 && Math.abs(centerY - 14.5) < 5) {
+                            position = '中心';
+                            emoji = '⭐';
+                        } else {
+                            position = '其他';
+                            emoji = '📍';
+                        }
+
+                        console.log(`矩形 #${index + 1}: ${emoji} ${position}区域`);
+                        console.log(`  左上角: (${x}, ${y})`);
+                        console.log(`  右下角: (${x + w}, ${y + h})`);
+                        console.log(`  宽度: ${w}`);
+                        console.log(`  高度: ${h}`);
+                        console.log(`  中心点: (${centerX}, ${centerY})`);
+
+                        // 码点范围
+                        const minRow = Math.max(0, Math.floor(y));
+                        const maxRow = Math.min(28, Math.ceil(y + h) - 1);
+                        const minCol = Math.max(0, Math.floor(x));
+                        const maxCol = Math.min(28, Math.ceil(x + w) - 1);
+                        console.log(`  码点行: [${minRow} ~ ${maxRow}]`);
+                        console.log(`  码点列: [${minCol} ~ ${maxCol}]`);
+                        console.log('');
+                    });
+                }
+
+                // 打印原始 JSON
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log('📄 原始 JSON 数据:');
+                console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+                console.log(JSON.stringify(data, null, 2));
+                console.log('');
+
+                console.log('========================================');
+                console.log(`✅ 总计: ${data.circles?.length || 0} 个圆形 + ${data.rects?.length || 0} 个矩形`);
+                console.log('========================================\n');
+
+            } catch (e) {
+                console.error('❌ 解析遮罩数据失败:', e);
+            }
+        };
+
+        // Print instruction
+        console.log('💡 提示: 在控制台输入 printMaskData() 可以查看遮罩层的详细坐标信息');
+        console.log('');
 
         // Mouse wheel zoom (zoom centered on cursor, limited to 50%-200%)
     </script>
